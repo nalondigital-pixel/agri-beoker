@@ -12,6 +12,21 @@
         .card { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
     </style>
 </head>
+<h2>Blocked Users</h2>
+<table>
+    <tr>
+        <th>Phone</th>
+        <th>Reason</th>
+        <th>Created</th>
+    </tr>
+    {% for user in blocked_users %}
+    <tr>
+        <td>{{ user.phone }}</td>
+        <td>{{ user.reason }}</td>
+        <td>{{ user.created_at }}</td>
+    </tr>
+    {% endfor %}
+</table>
 <body>
 
     <h1>Agri Broker Dashboard</h1>

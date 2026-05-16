@@ -11,32 +11,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard_home(request: Request):
-    listings = (
-        supabase.table("listings")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
-
-    buyers = (
-        supabase.table("buyers")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
-
-    deals = (
-        supabase.table("deals")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-        .data
-        or []
-    )
+    listings = supabase.table("listings").select("*").order("created_at", desc=True).execute().data or []
+    buyers = supabase.table("buyers").select("*").order("created_at", desc=True).execute().data or []
+    deals = supabase.table("deals").select("*").order("created_at", desc=True).execute().data or []
+    blocked_users = supabase.table("blocked_users").select("*").order("created_at", desc=True).execute().data or []
 
     return templates.TemplateResponse(
         request=request,
@@ -45,5 +23,6 @@ def dashboard_home(request: Request):
             "listings": listings,
             "buyers": buyers,
             "deals": deals,
+            "blocked_users": blocked_users,
         },
     )

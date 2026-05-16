@@ -27,3 +27,15 @@ def block_user(phone: str, reason: str):
     )
 
     return response.data
+
+
+def count_today_listings_by_seller(phone: str) -> int:
+    response = (
+        supabase.table("listings")
+        .select("id")
+        .eq("seller_phone", phone)
+        .gte("created_at", "now() - interval '1 day'")
+        .execute()
+    )
+
+    return len(response.data or [])

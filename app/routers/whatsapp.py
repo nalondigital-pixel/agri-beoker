@@ -11,9 +11,14 @@ from app.services.deal_service import (
     find_pending_deal_by_buyer_phone,
     update_deal_status,
 )
-from app.services.trust_service import is_blocked_user
+from app.services.trust_service import (
+    is_blocked_user,
+    count_today_listings_by_seller,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
+
+DAILY_LISTING_LIMIT = 5
 
 
 @router.get("/")
@@ -114,6 +119,18 @@ Please contact the buyer to complete the deal.
                 "listing": listing,
             }
 
+        today_count = count_today_listings_by_seller(sender_phone)
+
+        if today_count >= DAILY_LISTING_LIMIT:
+            send_whatsapp_message(
+                sender_phone,
+                "You have reached today's listing limit. Please try again tomorrow."
+            )
+            return {
+                "status": "daily_limit_reached",
+                "limit": DAILY_LISTING_LIMIT,
+            }
+
         extracted = extract_market_data(incoming_message)
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
@@ -147,7 +164,7 @@ Please contact the buyer to complete the deal.
                 continue
 
             buyer_message = f"""
- AGRI MATCH ALERT 
+🚜 AGRI MATCH ALERT 🚜
 
 Commodity: {extracted.get('commodity')}
 Quantity: {extracted.get('quantity')}
