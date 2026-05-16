@@ -27,6 +27,27 @@
     </tr>
     {% endfor %}
 </table>
+
+<h2>Fraud Reports</h2>
+<table>
+    <tr>
+        <th>Reporter</th>
+        <th>Reported</th>
+        <th>Reason</th>
+        <th>Status</th>
+        <th>Created</th>
+    </tr>
+    {% for report in fraud_reports %}
+    <tr>
+        <td>{{ report.reporter_phone }}</td>
+        <td>{{ report.reported_phone }}</td>
+        <td>{{ report.reason }}</td>
+        <td>{{ report.status }}</td>
+        <td>{{ report.created_at }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
 <body>
 
     <h1>Agri Broker Dashboard</h1>

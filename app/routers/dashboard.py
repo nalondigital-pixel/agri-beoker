@@ -15,6 +15,7 @@ def dashboard_home(request: Request):
     buyers = supabase.table("buyers").select("*").order("created_at", desc=True).execute().data or []
     deals = supabase.table("deals").select("*").order("created_at", desc=True).execute().data or []
     blocked_users = supabase.table("blocked_users").select("*").order("created_at", desc=True).execute().data or []
+    fraud_reports = supabase.table("fraud_reports").select("*").order("created_at", desc=True).execute().data or []
 
     return templates.TemplateResponse(
         request=request,
@@ -24,5 +25,6 @@ def dashboard_home(request: Request):
             "buyers": buyers,
             "deals": deals,
             "blocked_users": blocked_users,
+            "fraud_reports": fraud_reports,
         },
     )
