@@ -256,7 +256,10 @@ async def receive_message(request: Request):
             return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
 
         # Listing flow
-        extracted = extract_market_data(incoming_message)
+        extracted = extract_market_data(
+        incoming_message,
+         reporter_phone=sender_phone,
+)
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
 

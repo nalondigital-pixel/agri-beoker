@@ -1,43 +1,127 @@
 import re
 from difflib import get_close_matches
+from datetime import datetime, timezone
 
 from app.db.supabase_client import supabase
 
 
+AUTO_PROMOTE_COUNT_THRESHOLD = 5
+AUTO_PROMOTE_UNIQUE_USERS_THRESHOLD = 3
+
+
 COMMON_COMMODITIES = {
-    "tomato": "tomato",
-    "tomatoes": "tomato",
-    "matomatisi": "tomato",
-
-    "onion": "onion",
-    "onions": "onion",
-
-    "potato": "potato",
-    "potatoes": "potato",
-
-    "maize": "maize",
-    "corn": "maize",
-    "chibage": "maize",
-
-    "beans": "beans",
-    "bean": "beans",
-    "nyemba": "beans",
-
-    "beef": "beef",
-    "nyama": "beef",
-
+    # Livestock
+    "mombe": "cattle",
     "cattle": "cattle",
     "cow": "cattle",
     "cows": "cattle",
-    "mombe": "cattle",
+    "bull": "cattle",
+    "bulls": "cattle",
+    "ox": "cattle",
+    "oxen": "cattle",
+    "heifer": "cattle",
+    "calf": "cattle",
 
+    "mbudzi": "goat",
     "goat": "goat",
     "goats": "goat",
-    "mbudzi": "goat",
 
+    "hwai": "sheep",
+    "sheep": "sheep",
+    "ram": "sheep",
+    "ewe": "sheep",
+    "lamb": "sheep",
+
+    "nguruve": "pig",
+    "pig": "pig",
+    "pigs": "pig",
+
+    "huku": "chicken",
     "chicken": "chicken",
     "chickens": "chicken",
-    "huku": "chicken",
+    "broiler": "chicken",
+    "broilers": "chicken",
+    "layer": "chicken",
+    "layers": "chicken",
+    "roadrunner": "chicken",
+    "rabbit": "rabbit",
+    "rabbits": "rabbit",
+
+    # Meat
+    "beef": "beef",
+    "nyama": "meat",
+    "meat": "meat",
+    "pork": "pork",
+    "mutton": "mutton",
+    "tripe": "tripe",
+    "matumbu": "tripe",
+    "liver": "liver",
+
+    # Grains
+    "maize": "maize",
+    "corn": "maize",
+    "chibage": "maize",
+    "mealies": "maize",
+    "sorghum": "sorghum",
+    "mapfunde": "sorghum",
+    "millet": "millet",
+    "mhunga": "pearl millet",
+    "rapoko": "finger millet",
+    "wheat": "wheat",
+    "rice": "rice",
+
+    # Legumes
+    "beans": "beans",
+    "bean": "beans",
+    "nyemba": "beans",
+    "cowpeas": "cowpeas",
+    "nyimo": "bambara nuts",
+    "groundnuts": "groundnuts",
+    "nzungu": "groundnuts",
+    "peanuts": "groundnuts",
+    "soya": "soybeans",
+    "soybeans": "soybeans",
+    "soyabeans": "soybeans",
+
+    # Vegetables
+    "tomato": "tomato",
+    "tomatoes": "tomato",
+    "matomatisi": "tomato",
+    "onion": "onion",
+    "onions": "onion",
+    "hanyanisi": "onion",
+    "potato": "potato",
+    "potatoes": "potato",
+    "mbatatisi": "potato",
+    "sweet potato": "sweet potato",
+    "mbambaira": "sweet potato",
+    "cabbage": "cabbage",
+    "cabbages": "cabbage",
+    "rape": "rape",
+    "covo": "covo",
+    "tsunga": "tsunga",
+    "spinach": "spinach",
+    "carrot": "carrot",
+    "carrots": "carrot",
+    "butternut": "butternut",
+    "pumpkin": "pumpkin",
+    "manhanga": "pumpkin",
+
+    # Fruits
+    "banana": "banana",
+    "bananas": "banana",
+    "orange": "orange",
+    "oranges": "orange",
+    "mango": "mango",
+    "mangoes": "mango",
+    "avocado": "avocado",
+    "avocados": "avocado",
+    "watermelon": "watermelon",
+
+    # Dairy / eggs
+    "milk": "milk",
+    "eggs": "eggs",
+    "egg": "eggs",
 }
 
 
@@ -54,7 +138,7 @@ UNIT_ALIASES = {
 
     "bucket": "buckets",
     "buckets": "buckets",
-    "bucketful": "buckets",
+    "buckes": "buckets",
 
     "crate": "crates",
     "crates": "crates",
@@ -67,21 +151,35 @@ UNIT_ALIASES = {
     "tonne": "tons",
     "tonnes": "tons",
 
+    "dozen": "dozen",
+    "dozens": "dozen",
+
     "head": "head",
     "heads": "head",
 }
 
 
 STOP_WORDS = {
-    "ndine", "ndiri", "ku", "mu", "pa", "pane", "i", "have",
-    "selling", "sell", "available", "in", "at", "the", "a",
-    "an", "with", "and", "for", "to", "of", "dziri", "dzinotengeswa",
-    "bags", "bag", "kgs", "kg", "bucket", "buckets", "crate", "crates",
-    "box", "boxes", "ton", "tons", "tonne", "tonnes",
+    # English
+    "i", "have", "has", "am", "is", "are", "selling", "sell", "buy",
+    "available", "in", "at", "the", "a", "an", "with", "and", "for",
+    "to", "of", "from",
+
+    # Shona / Ndebele fillers
+    "ndine", "ndiri", "tine", "pane", "ku", "mu", "pa", "dze", "dzangu",
+    "dza", "dze", "ye", "yema", "re", "ra", "e", "ze", "za", "zve", "zva",
+    "che", "cha", "chemu", "yeku", "dzeku", "zvekutengesa", "dzinotengeswa",
+
+    # Units
+    *UNIT_ALIASES.keys(),
 }
 
 
-AUTO_PROMOTE_THRESHOLD = 5
+KNOWN_LOCATION_WORDS = {
+    "chegutu", "kadoma", "norton", "harare", "kwekwe", "gweru",
+    "chinhoyi", "bindura", "ruwa", "chitungwiza", "marondera",
+    "bulawayo", "rimuka", "epworth",
+}
 
 
 def clean_text(value: str) -> str:
@@ -93,7 +191,7 @@ def clean_text(value: str) -> str:
 
 def tokenize(text: str):
     text = clean_text(text)
-    text = re.sub(r"[^a-zA-Z0-9\s]", " ", text)
+    text = re.sub(r"[^a-zA-Z0-9\.\s]", " ", text)
     return [word for word in text.split() if word]
 
 
@@ -129,29 +227,62 @@ def normalize_unit(value: str):
     if close:
         return UNIT_ALIASES[close[0]]
 
-    return value
+    return None
+
+
+def normalize_number(token: str):
+    token = clean_text(token)
+
+    number_words = {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "dozen": 12,
+        "half": 0.5,
+    }
+
+    if token in number_words:
+        return number_words[token]
+
+    try:
+        if "." in token:
+            return float(token)
+
+        return int(token)
+    except ValueError:
+        return None
 
 
 def extract_quantity_and_unit(text: str):
     tokens = tokenize(text)
 
     for index, token in enumerate(tokens):
-        if token.isdigit():
-            quantity = int(token)
-            unit = None
+        quantity = normalize_number(token)
 
-            if index + 1 < len(tokens):
-                possible_unit = normalize_unit(tokens[index + 1])
+        if quantity is None:
+            continue
 
-                if possible_unit:
-                    unit = possible_unit
+        unit = None
 
-            raw_quantity_text = token
+        if index + 1 < len(tokens):
+            unit = normalize_unit(tokens[index + 1])
 
-            if unit:
-                raw_quantity_text = f"{quantity} {unit}"
+        if token == "half" and index + 1 < len(tokens):
+            unit = normalize_unit(tokens[index + 1])
 
-            return quantity, unit, raw_quantity_text
+        raw_quantity_text = str(quantity)
+
+        if unit:
+            raw_quantity_text = f"{quantity} {unit}"
+
+        return quantity, unit, raw_quantity_text
 
     return None, None, None
 
@@ -166,6 +297,11 @@ def normalize_commodity(value: str):
     if value in alias_map:
         return alias_map[value]
 
+    # Phrase match first
+    for alias, normalized in alias_map.items():
+        if " " in alias and alias in value:
+            return normalized
+
     close = get_close_matches(value, alias_map.keys(), n=1, cutoff=0.82)
 
     if close:
@@ -174,31 +310,64 @@ def normalize_commodity(value: str):
     return value
 
 
-def guess_commodity_from_text(text: str):
+def guess_commodity_from_text(text: str, reporter_phone: str | None = None):
     tokens = tokenize(text)
     alias_map = get_alias_map()
+    clean_message = clean_text(text)
 
+    # Multi-word aliases first
+    for alias, normalized in alias_map.items():
+        if " " in alias and alias in clean_message:
+            return normalized
+
+    # Exact token aliases
     for token in tokens:
         if token in alias_map:
             return alias_map[token]
 
+    # Fuzzy token aliases
     for token in tokens:
         close = get_close_matches(token, alias_map.keys(), n=1, cutoff=0.82)
 
         if close:
             return alias_map[close[0]]
 
+    # Unknown term logging
     for token in tokens:
-        if token not in STOP_WORDS and not token.isdigit():
-            log_unknown_term(token, text)
+        if should_log_unknown(token):
+            log_unknown_term(token, text, reporter_phone)
 
     return None
 
 
-def log_unknown_term(term: str, context: str):
+def should_log_unknown(token: str):
+    token = clean_text(token)
+
+    if not token:
+        return False
+
+    if token.isdigit():
+        return False
+
+    if normalize_number(token) is not None:
+        return False
+
+    if token in STOP_WORDS:
+        return False
+
+    if token in KNOWN_LOCATION_WORDS:
+        return False
+
+    if normalize_unit(token):
+        return False
+
+    return True
+
+
+def log_unknown_term(term: str, context: str, reporter_phone: str | None = None):
     term = clean_text(term)
 
-    if not term or term in STOP_WORDS or term.isdigit():
+    if not should_log_unknown(term):
         return None
 
     existing = (
@@ -210,19 +379,39 @@ def log_unknown_term(term: str, context: str):
         .execute()
     )
 
+    now = datetime.now(timezone.utc).isoformat()
+
     if existing.data:
         row = existing.data[0]
+
+        reporter_phones = row.get("reporter_phones") or []
+
+        if reporter_phone and reporter_phone not in reporter_phones:
+            reporter_phones.append(reporter_phone)
+
+        unique_reporters = len(reporter_phones)
         new_count = (row.get("count") or 1) + 1
 
         supabase.table("unknown_terms").update({
             "count": new_count,
             "context": context,
+            "reporter_phones": reporter_phones,
+            "unique_reporters": unique_reporters,
+            "last_seen_at": now,
         }).eq("id", row["id"]).execute()
 
-        if new_count >= AUTO_PROMOTE_THRESHOLD:
+        if (
+            new_count >= AUTO_PROMOTE_COUNT_THRESHOLD
+            and unique_reporters >= AUTO_PROMOTE_UNIQUE_USERS_THRESHOLD
+        ):
             auto_promote_unknown_term(term)
 
         return row
+
+    reporter_phones = []
+
+    if reporter_phone:
+        reporter_phones.append(reporter_phone)
 
     response = (
         supabase.table("unknown_terms")
@@ -231,6 +420,10 @@ def log_unknown_term(term: str, context: str):
             "context": context,
             "count": 1,
             "status": "pending",
+            "reporter_phones": reporter_phones,
+            "unique_reporters": len(reporter_phones),
+            "first_seen_at": now,
+            "last_seen_at": now,
         })
         .execute()
     )
@@ -242,13 +435,6 @@ def log_unknown_term(term: str, context: str):
 
 
 def auto_promote_unknown_term(term: str):
-    """
-    Safe-ish auto learning:
-    If a term appears many times, we add it as its own commodity.
-    Example: 'beef' appears often -> beef becomes known.
-    Admin can later edit normalized value if needed.
-    """
-
     term = clean_text(term)
 
     if not term:
@@ -287,20 +473,14 @@ def auto_promote_unknown_term(term: str):
     return None
 
 
-def fallback_extract_market_data(text: str):
-    commodity = guess_commodity_from_text(text)
+def fallback_extract_market_data(text: str, reporter_phone: str | None = None):
+    commodity = guess_commodity_from_text(text, reporter_phone)
     quantity, unit, raw_quantity_text = extract_quantity_and_unit(text)
-
-    known_locations = [
-        "chegutu", "kadoma", "norton", "harare",
-        "kwekwe", "gweru", "chinhoyi", "bindura",
-        "ruwa", "chitungwiza", "marondera", "bulawayo",
-    ]
 
     location = None
     lower_text = clean_text(text)
 
-    for loc in known_locations:
+    for loc in KNOWN_LOCATION_WORDS:
         if loc in lower_text:
             location = loc.title()
             break
@@ -316,8 +496,12 @@ def fallback_extract_market_data(text: str):
     }
 
 
-def apply_normalization(extracted: dict, raw_text: str = ""):
-    fallback = fallback_extract_market_data(raw_text)
+def apply_normalization(
+    extracted: dict,
+    raw_text: str = "",
+    reporter_phone: str | None = None,
+):
+    fallback = fallback_extract_market_data(raw_text, reporter_phone)
 
     commodity = extracted.get("commodity") or fallback.get("commodity")
     quantity = extracted.get("quantity") or fallback.get("quantity")
