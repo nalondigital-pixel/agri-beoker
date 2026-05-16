@@ -1,28 +1,47 @@
 from app.db.supabase_client import supabase
 
 
-# =========================
-# MATCHING ENGINE
-# =========================
-def find_matches(listing):
-    commodity = listing.get("commodity", "").strip().lower()
-    location = listing.get("location", "").strip().lower()
+def normalize_text(value):
+    if not value:
+        return ""
 
-    # Get all buyers
+    return str(value).strip().lower()
+
+
+def find_matches(listing):
+    commodity = normalize_text(listing.get("commodity"))
+    location = normalize_text(listing.get("location"))
+
     response = supabase.table("buyers").select("*").execute()
 
     buyers = response.data or []
     matches = []
 
-    for b in buyers:
-        b_commodity = (b.get("commodity") or "").strip().lower()
-        b_location = (b.get("location") or "").strip().lower()
+    for buyer in buyers:
+        buyer_commodity = normalize_text(buyer.get("commodity"))
+        buyer_location = normalize_text(buyer.get("location"))
 
-        # FLEXIBLE MATCHING (real-world friendly)
-        commodity_match = commodity in b_commodity or b_commodity in commodity
-        location_match = location in b_location or b_location in location
+        commodity_match = (
+            commodity in buyer_commodity
+            or buyer_commodity in commodity
+        )
+
+        location_match = (
+            location in buyer_location
+            or buyer_location in location
+        )
 
         if commodity_match and location_match:
-            matches.append(b)
+            matches.append(buyer)
+
+    # Verified buyers first, then highest reputation, then most deals
+    matches.sort(
+        key=lambda buyer: (
+            buyer.get("verified") is True,
+            buyer.get("reputation") or 0,
+            buyer.get("total_deals") or 0,
+        ),
+        reverse=True,
+    )
 
     return matches

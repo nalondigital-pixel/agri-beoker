@@ -25,19 +25,34 @@
     <h2>Recent Listings</h2>
     <table>
         <tr>
+            <th>Name</th>
+            <th>Verified</th>
+            <th>Reputation</th>
+            <th>Total Deals</th>
             <th>Commodity</th>
             <th>Quantity</th>
             <th>Location</th>
-            <th>Seller Phone</th>
-            <th>Created</th>
+            <th>Phone</th>
         </tr>
         {% for item in listings %}
         <tr>
-            <td>{{ item.commodity }}</td>
-            <td>{{ item.quantity }}</td>
-            <td>{{ item.location }}</td>
-            <td>{{ item.seller_phone }}</td>
-            <td>{{ item.created_at }}</td>
+            <td>{{ buyer.name }}</td>
+
+            <td>
+                {% if buyer.verified %}
+                    Verified
+                {% else %}
+                        Unverified
+                {% endif %}
+            </td>
+
+            <td>{{ buyer.reputation }}</td>
+            <td>{{ buyer.total_deals }}</td>
+
+            <td>{{ buyer.commodity }}</td>
+            <td>{{ buyer.quantity }}</td>
+            <td>{{ buyer.location }}</td>
+            <td>{{ buyer.phone }}</td>
         </tr>
         {% endfor %}
     </table>
