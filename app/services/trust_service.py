@@ -39,3 +39,21 @@ def count_today_listings_by_seller(phone: str) -> int:
     )
 
     return len(response.data or [])
+
+
+def create_fraud_report(reporter_phone: str, reported_phone: str, reason: str):
+    response = (
+        supabase.table("fraud_reports")
+        .insert({
+            "reporter_phone": reporter_phone,
+            "reported_phone": reported_phone,
+            "reason": reason,
+            "status": "open",
+        })
+        .execute()
+    )
+
+    if response.data:
+        return response.data[0]
+
+    return None

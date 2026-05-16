@@ -14,6 +14,7 @@ from app.services.deal_service import (
 from app.services.trust_service import (
     is_blocked_user,
     count_today_listings_by_seller,
+    create_fraud_report,
 )
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
@@ -59,6 +60,36 @@ async def receive_message(request: Request):
         if is_blocked_user(sender_phone):
             print("Blocked user ignored:", sender_phone)
             return {"status": "blocked_user_ignored"}
+
+        # Fraud report flow
+        if incoming_message.lower().startswith("report "):
+            parts = incoming_message.split(" ", 2)
+
+            if len(parts) < 3:
+                send_whatsapp_message(
+                    sender_phone,
+                    "Invalid report format. Use: REPORT 263XXXXXXXX reason"
+                )
+                return {"status": "invalid_report_format"}
+
+            reported_phone = parts[1].strip()
+            reason = parts[2].strip()
+
+            report = create_fraud_report(
+                reporter_phone=sender_phone,
+                reported_phone=reported_phone,
+                reason=reason,
+            )
+
+            send_whatsapp_message(
+                sender_phone,
+                "✅ Report received. Our team will review this user."
+            )
+
+            return {
+                "status": "fraud_report_created",
+                "report": report,
+            }
 
         if incoming_message.lower() == "yes":
             deal = find_pending_deal_by_buyer_phone(sender_phone)
