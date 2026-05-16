@@ -10,23 +10,29 @@ LANGUAGE_PROMPT = """
 3. Ndebele
 """
 
+NAME_PROMPTS = {
+    "english": "👤 What is your name?",
+    "shona": "👤 Zita renyu ndiani?",
+    "ndebele": "👤 Ungubani ibizo lakho?",
+}
+
 ROLE_PROMPTS = {
     "english": """
-What do you want to do?
+Hi {name}. What do you want to do?
 
 💵 1. Buy
 🐄 2. Sell
 🔁 3. Both
 """,
     "shona": """
-Unoda kuita chii?
+Mhoroi {name}. Munoda kuita chii?
 
 💵 1. Kutenga
 🐄 2. Kutengesa
 🔁 3. Zvese
 """,
     "ndebele": """
-Ufuna ukwenzani?
+Sawubona {name}. Ufuna ukwenzani?
 
 💵 1. Ukuthenga
 🐄 2. Ukuthengisa
@@ -72,15 +78,15 @@ Bhala AGREE ukuze uqhubeke.
 
 DONE_MESSAGES = {
     "english": """
-✅ Registration complete.
+✅ Registration complete, {name}.
 
 You now have 3 free daily listing tokens.
 
-You can now send listings like:
+You can send:
 "Ndine 4 mbudzi ku Kadoma"
 """,
     "shona": """
-✅ Wapedza kunyoresa.
+✅ Wapedza kunyoresa, {name}.
 
 Une 3 free daily listing tokens.
 
@@ -88,7 +94,7 @@ Unogona kutumira:
 "Ndine 4 mbudzi ku Kadoma"
 """,
     "ndebele": """
-✅ Usuqedile ukubhalisa.
+✅ Usuqedile ukubhalisa, {name}.
 
 Ule 3 free daily listing tokens.
 
@@ -141,7 +147,6 @@ def handle_registration_message(phone: str, message: str):
 
     step = session.get("current_step")
     temp_data = session.get("temp_data") or {}
-
     message_clean = message.strip()
 
     if step == "choose_language":
@@ -151,16 +156,30 @@ def handle_registration_message(phone: str, message: str):
             return LANGUAGE_PROMPT
 
         temp_data["language"] = language
+        set_session(phone, "enter_name", temp_data)
+
+        return NAME_PROMPTS[language]
+
+    if step == "enter_name":
+        language = temp_data.get("language", "english")
+        name = message_clean.strip()
+
+        if len(name) < 2:
+            return NAME_PROMPTS[language]
+
+        temp_data["name"] = name
         set_session(phone, "choose_role", temp_data)
 
-        return ROLE_PROMPTS[language]
+        return ROLE_PROMPTS[language].format(name=name)
 
     if step == "choose_role":
         language = temp_data.get("language", "english")
         role = normalize_role(message_clean)
 
         if not role:
-            return ROLE_PROMPTS[language]
+            return ROLE_PROMPTS[language].format(
+                name=temp_data.get("name", "")
+            )
 
         temp_data["role"] = role
         set_session(phone, "enter_location", temp_data)
@@ -170,12 +189,10 @@ def handle_registration_message(phone: str, message: str):
     if step == "enter_location":
         language = temp_data.get("language", "english")
 
-        location_text = message_clean
-
-        if "," in location_text:
-            city, neighborhood = [part.strip() for part in location_text.split(",", 1)]
+        if "," in message_clean:
+            city, neighborhood = [part.strip() for part in message_clean.split(",", 1)]
         else:
-            city = location_text.strip()
+            city = message_clean
             neighborhood = ""
 
         temp_data["city"] = city
@@ -192,6 +209,7 @@ def handle_registration_message(phone: str, message: str):
             return AGREE_PROMPTS[language]
 
         create_or_update_profile(phone, {
+            "name": temp_data.get("name"),
             "language": temp_data.get("language"),
             "role": temp_data.get("role"),
             "city": temp_data.get("city"),
@@ -205,6 +223,8 @@ def handle_registration_message(phone: str, message: str):
 
         clear_session(phone)
 
-        return DONE_MESSAGES[language]
+        return DONE_MESSAGES[language].format(
+            name=temp_data.get("name", "")
+        )
 
     return start_registration(phone)

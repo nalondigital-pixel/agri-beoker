@@ -9,14 +9,20 @@ from app.services.whatsapp_service import send_whatsapp_message
 from app.services.deal_service import (
     create_deal,
     find_pending_deal_by_buyer_phone,
+    find_pending_seller_decision,
     update_deal_status,
+    update_buyer_decision,
+    update_seller_decision,
 )
 from app.services.trust_service import (
     is_blocked_user,
     count_today_listings_by_seller,
     create_fraud_report,
 )
-from app.services.profile_service import has_completed_registration
+from app.services.profile_service import (
+    has_completed_registration,
+    get_display_name,
+)
 from app.services.registration_service import handle_registration_message
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
@@ -63,7 +69,6 @@ async def receive_message(request: Request):
             print("Blocked user ignored:", sender_phone)
             return {"status": "blocked_user_ignored"}
 
-        # Registration flow
         if not has_completed_registration(sender_phone):
             reply = handle_registration_message(sender_phone, incoming_message)
             send_whatsapp_message(sender_phone, reply)
@@ -94,13 +99,79 @@ async def receive_message(request: Request):
                 "✅ Report received. Our team will review this user."
             )
 
-            return {
-                "status": "fraud_report_created",
-                "report": report,
-            }
+            return {"status": "fraud_report_created", "report": report}
 
-        # Buyer YES flow
-        if incoming_message.lower() == "yes":
+        # Seller decision flow
+        seller_deal = find_pending_seller_decision(sender_phone)
+
+        if seller_deal and incoming_message in ["1", "2", "3"]:
+            listing = get_listing_by_id(seller_deal.get("listing_id"))
+
+            if incoming_message == "1":
+                update_seller_decision(seller_deal.get("id"), "share_contacts")
+                update_deal_status(seller_deal.get("id"), "confirmed")
+
+                buyer_phone = seller_deal.get("buyer_phone")
+                seller_phone = seller_deal.get("seller_phone")
+
+                seller_name = get_display_name(seller_phone)
+                buyer_name = get_display_name(buyer_phone)
+
+                buyer_message = f"""
+✅ DEAL APPROVED
+
+Seller: {seller_name}
+Seller contact: {seller_phone}
+
+Commodity: {listing.get('commodity')}
+Quantity: {listing.get('quantity')}
+Location: {listing.get('location')}
+
+Please contact the seller to arrange payment/collection.
+"""
+
+                seller_message = f"""
+✅ CONTACT SHARED
+
+Buyer: {buyer_name}
+Buyer contact: {buyer_phone}
+
+Commodity: {listing.get('commodity')}
+Quantity: {listing.get('quantity')}
+Location: {listing.get('location')}
+
+Please contact the buyer to complete the deal.
+"""
+
+                send_whatsapp_message(buyer_phone, buyer_message)
+                send_whatsapp_message(seller_phone, seller_message)
+
+                return {"status": "deal_confirmed_by_seller"}
+
+            if incoming_message == "2":
+                update_seller_decision(seller_deal.get("id"), "wait_better_offer")
+                update_deal_status(seller_deal.get("id"), "seller_waiting")
+
+                send_whatsapp_message(
+                    sender_phone,
+                    "✅ Noted. We will keep this listing active and look for a better match."
+                )
+
+                return {"status": "seller_waiting_for_better_offer"}
+
+            if incoming_message == "3":
+                update_seller_decision(seller_deal.get("id"), "cancel")
+                update_deal_status(seller_deal.get("id"), "cancelled")
+
+                send_whatsapp_message(
+                    sender_phone,
+                    "❌ Deal cancelled. We will not share contacts."
+                )
+
+                return {"status": "seller_cancelled_deal"}
+
+        # Buyer interest flow
+        if incoming_message.lower() in ["yes", "1"]:
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
             if not deal:
@@ -119,45 +190,42 @@ async def receive_message(request: Request):
                 )
                 return {"status": "listing_missing"}
 
-            seller_phone = listing.get("seller_phone")
+            seller_phone = deal.get("seller_phone") or listing.get("seller_phone")
             buyer_phone = deal.get("buyer_phone")
 
-            buyer_message = f"""
-✅ DEAL CONFIRMED
+            update_buyer_decision(deal.get("id"), "interested")
+            update_deal_status(deal.get("id"), "buyer_interested")
 
-Seller contact: {seller_phone}
+            buyer_name = get_display_name(buyer_phone)
+            seller_name = get_display_name(seller_phone)
 
+            send_whatsapp_message(
+                buyer_phone,
+                """
+✅ Interest received.
+
+We are asking the seller to approve contact sharing.
+"""
+            )
+
+            seller_prompt = f"""
+📢 BUYER INTEREST
+
+Buyer: {buyer_name}
 Commodity: {listing.get('commodity')}
 Quantity: {listing.get('quantity')}
 Location: {listing.get('location')}
 
-Please contact the seller to arrange payment/collection.
+What do you want to do?
+
+✅ 1 = Share contacts now
+⏳ 2 = Wait for better offer
+❌ 3 = Cancel this deal
 """
 
-            seller_message = f"""
-✅ BUYER INTEREST CONFIRMED
+            send_whatsapp_message(seller_phone, seller_prompt)
 
-Buyer contact: {buyer_phone}
-
-Commodity: {listing.get('commodity')}
-Quantity: {listing.get('quantity')}
-Location: {listing.get('location')}
-
-Please contact the buyer to complete the deal.
-"""
-
-            send_whatsapp_message(buyer_phone, buyer_message)
-
-            if seller_phone:
-                send_whatsapp_message(seller_phone, seller_message)
-
-            update_deal_status(deal.get("id"), "confirmed")
-
-            return {
-                "status": "deal_confirmed",
-                "deal": deal,
-                "listing": listing,
-            }
+            return {"status": "seller_approval_requested"}
 
         # Daily spam limit
         today_count = count_today_listings_by_seller(sender_phone)
@@ -167,10 +235,7 @@ Please contact the buyer to complete the deal.
                 sender_phone,
                 "You have reached today's listing limit. Please try again tomorrow."
             )
-            return {
-                "status": "daily_limit_reached",
-                "limit": DAILY_LISTING_LIMIT,
-            }
+            return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
 
         # Listing flow
         extracted = extract_market_data(incoming_message)
@@ -180,12 +245,26 @@ Please contact the buyer to complete the deal.
         listing = save_listing(extracted)
 
         if not listing:
-            return {
-                "status": "error",
-                "message": "Listing could not be saved",
-            }
+            return {"status": "error", "message": "Listing could not be saved"}
 
         matches = find_matches(extracted)
+
+        if not matches:
+            send_whatsapp_message(
+                sender_phone,
+                """
+✅ Listing saved.
+
+We do not have a matching buyer right now.
+We will notify you when we find one.
+"""
+            )
+
+            return {
+                "status": "listing_saved_no_matches",
+                "listing": listing,
+                "matches": [],
+            }
 
         sent_alerts = []
 
@@ -199,6 +278,7 @@ Please contact the buyer to complete the deal.
             deal = create_deal(
                 listing_id=listing.get("id"),
                 buyer=buyer,
+                seller_phone=sender_phone,
             )
 
             if not deal:
@@ -212,9 +292,9 @@ Commodity: {extracted.get('commodity')}
 Quantity: {extracted.get('quantity')}
 Location: {extracted.get('location')}
 
-Deal ID: {deal.get('id')}
-
-Reply YES if interested.
+Reply:
+✅ 1 = Interested
+❌ 2 = Not interested
 """
 
             send_whatsapp_message(buyer_phone, buyer_message)
@@ -223,6 +303,16 @@ Reply YES if interested.
                 "buyer": buyer,
                 "deal": deal,
             })
+
+        send_whatsapp_message(
+            sender_phone,
+            f"""
+✅ Listing saved.
+
+We found {len(sent_alerts)} possible buyer(s).
+We will notify you if a buyer shows interest.
+"""
+        )
 
         return {
             "status": "saved",
@@ -233,8 +323,4 @@ Reply YES if interested.
 
     except Exception as e:
         print("Webhook error:", e)
-
-        return {
-            "status": "error",
-            "message": str(e),
-        }
+        return {"status": "error", "message": str(e)}

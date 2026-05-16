@@ -41,8 +41,18 @@ def has_completed_registration(phone: str) -> bool:
         return False
 
     return bool(
-        profile.get("language")
+        profile.get("name")
+        and profile.get("language")
         and profile.get("role")
         and profile.get("city")
         and profile.get("agreed_terms") is True
     )
+
+
+def get_display_name(phone: str):
+    profile = get_profile(phone)
+
+    if profile and profile.get("name"):
+        return profile["name"]
+
+    return phone
