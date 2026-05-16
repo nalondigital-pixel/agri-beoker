@@ -16,6 +16,8 @@ from app.services.trust_service import (
     count_today_listings_by_seller,
     create_fraud_report,
 )
+from app.services.profile_service import has_completed_registration
+from app.services.registration_service import handle_registration_message
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -61,6 +63,12 @@ async def receive_message(request: Request):
             print("Blocked user ignored:", sender_phone)
             return {"status": "blocked_user_ignored"}
 
+        # Registration flow
+        if not has_completed_registration(sender_phone):
+            reply = handle_registration_message(sender_phone, incoming_message)
+            send_whatsapp_message(sender_phone, reply)
+            return {"status": "registration_flow"}
+
         # Fraud report flow
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
@@ -91,6 +99,7 @@ async def receive_message(request: Request):
                 "report": report,
             }
 
+        # Buyer YES flow
         if incoming_message.lower() == "yes":
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
@@ -150,6 +159,7 @@ Please contact the buyer to complete the deal.
                 "listing": listing,
             }
 
+        # Daily spam limit
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
@@ -162,6 +172,7 @@ Please contact the buyer to complete the deal.
                 "limit": DAILY_LISTING_LIMIT,
             }
 
+        # Listing flow
         extracted = extract_market_data(incoming_message)
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
