@@ -1,5 +1,5 @@
 from app.db.supabase_client import supabase
-from app.services.geo_service import are_locations_compatible
+from app.services.geo_service import get_location_match_info
 
 
 def normalize_text(value):
@@ -27,12 +27,14 @@ def find_matches(listing):
             or buyer_commodity in commodity
         )
 
-        location_match = are_locations_compatible(
+        geo_info = get_location_match_info(
             seller_location,
             buyer_location
         )
 
-        if commodity_match and location_match:
+        if commodity_match and geo_info["compatible"]:
+            buyer["_geo_match_type"] = geo_info["match_type"]
+            buyer["_geo_message"] = geo_info["message"]
             matches.append(buyer)
 
     matches.sort(
@@ -40,6 +42,8 @@ def find_matches(listing):
             buyer.get("verified") is True,
             buyer.get("reputation") or 0,
             buyer.get("total_deals") or 0,
+            buyer.get("_geo_match_type") == "same_location",
+            buyer.get("_geo_match_type") == "nearby",
         ),
         reverse=True,
     )

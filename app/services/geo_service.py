@@ -14,7 +14,6 @@ def get_location_info(location: str):
     if location_key in ZIMBABWE_GEO:
         return ZIMBABWE_GEO[location_key]
 
-    # Try partial match, e.g. "Rimuka Kadoma" contains "kadoma"
     for key, info in ZIMBABWE_GEO.items():
         if key in location_key or location_key in key:
             return info
@@ -31,45 +30,60 @@ def get_display_location(location: str):
     return location
 
 
-def are_locations_compatible(seller_location: str, buyer_location: str):
+def get_location_match_info(seller_location: str, buyer_location: str):
     seller_key = normalize_location(seller_location)
     buyer_key = normalize_location(buyer_location)
 
     if not seller_key or not buyer_key:
-        return False
+        return {
+            "compatible": False,
+            "match_type": "unknown",
+            "message": "Location unknown",
+        }
 
-    # Exact or partial match
-    if seller_key == buyer_key:
-        return True
-
-    if seller_key in buyer_key or buyer_key in seller_key:
-        return True
+    if seller_key == buyer_key or seller_key in buyer_key or buyer_key in seller_key:
+        return {
+            "compatible": True,
+            "match_type": "same_location",
+            "message": "Same location",
+        }
 
     seller_info = get_location_info(seller_key)
     buyer_info = get_location_info(buyer_key)
 
     if not seller_info or not buyer_info:
-        return False
+        return {
+            "compatible": False,
+            "match_type": "unknown",
+            "message": "Location not recognized",
+        }
 
     seller_display = normalize_location(seller_info.get("display"))
     buyer_display = normalize_location(buyer_info.get("display"))
 
-    # Same normalized display
-    if seller_display == buyer_display:
-        return True
-
-    # Nearby town match
     seller_nearby = seller_info.get("nearby", [])
     buyer_nearby = buyer_info.get("nearby", [])
 
-    if buyer_display in seller_nearby:
-        return True
+    if buyer_display in seller_nearby or seller_display in buyer_nearby:
+        return {
+            "compatible": True,
+            "match_type": "nearby",
+            "message": "Nearby area",
+        }
 
-    if seller_display in buyer_nearby:
-        return True
-
-    # Same province match as weaker compatibility
     if seller_info.get("province") == buyer_info.get("province"):
-        return True
+        return {
+            "compatible": True,
+            "match_type": "same_province",
+            "message": f"Same province: {seller_info.get('province')}",
+        }
 
-    return False
+    return {
+        "compatible": False,
+        "match_type": "far",
+        "message": "Far location",
+    }
+
+
+def are_locations_compatible(seller_location: str, buyer_location: str):
+    return get_location_match_info(seller_location, buyer_location)["compatible"]

@@ -24,6 +24,7 @@ from app.services.profile_service import (
     get_display_name,
 )
 from app.services.registration_service import handle_registration_message
+from app.services.language_service import translate
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -66,7 +67,6 @@ async def receive_message(request: Request):
         print("MESSAGE:", incoming_message)
 
         if is_blocked_user(sender_phone):
-            print("Blocked user ignored:", sender_phone)
             return {"status": "blocked_user_ignored"}
 
         if not has_completed_registration(sender_phone):
@@ -74,14 +74,13 @@ async def receive_message(request: Request):
             send_whatsapp_message(sender_phone, reply)
             return {"status": "registration_flow"}
 
-        # Fraud report flow
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
 
             if len(parts) < 3:
                 send_whatsapp_message(
                     sender_phone,
-                    "Invalid report format. Use: REPORT 263XXXXXXXX reason"
+                    translate(sender_phone, "invalid_report_format"),
                 )
                 return {"status": "invalid_report_format"}
 
@@ -96,16 +95,22 @@ async def receive_message(request: Request):
 
             send_whatsapp_message(
                 sender_phone,
-                "✅ Report received. Our team will review this user."
+                translate(sender_phone, "report_received"),
             )
 
             return {"status": "fraud_report_created", "report": report}
 
-        # Seller decision flow
         seller_deal = find_pending_seller_decision(sender_phone)
 
         if seller_deal and incoming_message in ["1", "2", "3"]:
             listing = get_listing_by_id(seller_deal.get("listing_id"))
+
+            if not listing:
+                send_whatsapp_message(
+                    sender_phone,
+                    "Deal found, but listing details are missing.",
+                )
+                return {"status": "listing_missing"}
 
             if incoming_message == "1":
                 update_seller_decision(seller_deal.get("id"), "share_contacts")
@@ -117,31 +122,25 @@ async def receive_message(request: Request):
                 seller_name = get_display_name(seller_phone)
                 buyer_name = get_display_name(buyer_phone)
 
-                buyer_message = f"""
-✅ DEAL APPROVED
+                buyer_message = translate(
+                    buyer_phone,
+                    "deal_approved_buyer",
+                    seller_name=seller_name,
+                    seller_phone=seller_phone,
+                    commodity=listing.get("commodity"),
+                    quantity=listing.get("quantity"),
+                    location=listing.get("location"),
+                )
 
-Seller: {seller_name}
-Seller contact: {seller_phone}
-
-Commodity: {listing.get('commodity')}
-Quantity: {listing.get('quantity')}
-Location: {listing.get('location')}
-
-Please contact the seller to arrange payment/collection.
-"""
-
-                seller_message = f"""
-✅ CONTACT SHARED
-
-Buyer: {buyer_name}
-Buyer contact: {buyer_phone}
-
-Commodity: {listing.get('commodity')}
-Quantity: {listing.get('quantity')}
-Location: {listing.get('location')}
-
-Please contact the buyer to complete the deal.
-"""
+                seller_message = translate(
+                    seller_phone,
+                    "contact_shared_seller",
+                    buyer_name=buyer_name,
+                    buyer_phone=buyer_phone,
+                    commodity=listing.get("commodity"),
+                    quantity=listing.get("quantity"),
+                    location=listing.get("location"),
+                )
 
                 send_whatsapp_message(buyer_phone, buyer_message)
                 send_whatsapp_message(seller_phone, seller_message)
@@ -154,7 +153,7 @@ Please contact the buyer to complete the deal.
 
                 send_whatsapp_message(
                     sender_phone,
-                    "✅ Noted. We will keep this listing active and look for a better match."
+                    translate(sender_phone, "seller_waiting_better_offer"),
                 )
 
                 return {"status": "seller_waiting_for_better_offer"}
@@ -165,19 +164,18 @@ Please contact the buyer to complete the deal.
 
                 send_whatsapp_message(
                     sender_phone,
-                    "❌ Deal cancelled. We will not share contacts."
+                    translate(sender_phone, "seller_cancelled_deal"),
                 )
 
                 return {"status": "seller_cancelled_deal"}
 
-        # Buyer interest flow
         if incoming_message.lower() in ["yes", "1"]:
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
             if not deal:
                 send_whatsapp_message(
                     sender_phone,
-                    "No pending deal found for your number."
+                    "No pending deal found for your number.",
                 )
                 return {"status": "no_pending_deal"}
 
@@ -186,7 +184,7 @@ Please contact the buyer to complete the deal.
             if not listing:
                 send_whatsapp_message(
                     sender_phone,
-                    "Deal found, but listing details are missing."
+                    "Deal found, but listing details are missing.",
                 )
                 return {"status": "listing_missing"}
 
@@ -197,47 +195,34 @@ Please contact the buyer to complete the deal.
             update_deal_status(deal.get("id"), "buyer_interested")
 
             buyer_name = get_display_name(buyer_phone)
-            seller_name = get_display_name(seller_phone)
 
             send_whatsapp_message(
                 buyer_phone,
-                """
-✅ Interest received.
-
-We are asking the seller to approve contact sharing.
-"""
+                translate(buyer_phone, "buyer_interest_received"),
             )
 
-            seller_prompt = f"""
-📢 BUYER INTEREST
-
-Buyer: {buyer_name}
-Commodity: {listing.get('commodity')}
-Quantity: {listing.get('quantity')}
-Location: {listing.get('location')}
-
-What do you want to do?
-
-✅ 1 = Share contacts now
-⏳ 2 = Wait for better offer
-❌ 3 = Cancel this deal
-"""
+            seller_prompt = translate(
+                seller_phone,
+                "seller_approval_prompt",
+                buyer_name=buyer_name,
+                commodity=listing.get("commodity"),
+                quantity=listing.get("quantity"),
+                location=listing.get("location"),
+            )
 
             send_whatsapp_message(seller_phone, seller_prompt)
 
             return {"status": "seller_approval_requested"}
 
-        # Daily spam limit
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
             send_whatsapp_message(
                 sender_phone,
-                "You have reached today's listing limit. Please try again tomorrow."
+                translate(sender_phone, "daily_limit_reached"),
             )
             return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
 
-        # Listing flow
         extracted = extract_market_data(incoming_message)
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
@@ -252,12 +237,7 @@ What do you want to do?
         if not matches:
             send_whatsapp_message(
                 sender_phone,
-                """
-✅ Listing saved.
-
-We do not have a matching buyer right now.
-We will notify you when we find one.
-"""
+                translate(sender_phone, "listing_saved_no_matches"),
             )
 
             return {
@@ -272,7 +252,6 @@ We will notify you when we find one.
             buyer_phone = buyer.get("phone")
 
             if not buyer_phone:
-                print("Skipping buyer with no phone:", buyer)
                 continue
 
             deal = create_deal(
@@ -282,20 +261,16 @@ We will notify you when we find one.
             )
 
             if not deal:
-                print("Deal could not be created for buyer:", buyer)
                 continue
 
-            buyer_message = f"""
-🚜 AGRI MATCH ALERT 🚜
-
-Commodity: {extracted.get('commodity')}
-Quantity: {extracted.get('quantity')}
-Location: {extracted.get('location')}
-
-Reply:
-✅ 1 = Interested
-❌ 2 = Not interested
-"""
+            buyer_message = translate(
+                buyer_phone,
+                "buyer_match_alert",
+                commodity=extracted.get("commodity"),
+                quantity=extracted.get("quantity"),
+                location=extracted.get("location"),
+                distance_match=buyer.get("_geo_message", "Location match"),
+            )
 
             send_whatsapp_message(buyer_phone, buyer_message)
 
@@ -306,12 +281,11 @@ Reply:
 
         send_whatsapp_message(
             sender_phone,
-            f"""
-✅ Listing saved.
-
-We found {len(sent_alerts)} possible buyer(s).
-We will notify you if a buyer shows interest.
-"""
+            translate(
+                sender_phone,
+                "listing_saved_with_matches",
+                match_count=len(sent_alerts),
+            ),
         )
 
         return {
