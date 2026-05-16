@@ -22,13 +22,32 @@ from app.services.trust_service import (
 from app.services.profile_service import (
     has_completed_registration,
     get_display_name,
+    get_profile,
 )
 from app.services.registration_service import handle_registration_message
 from app.services.language_service import translate
+from app.services.feedback_service import (
+    handle_feedback_response,
+    schedule_deal_feedback,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
 DAILY_LISTING_LIMIT = 5
+
+
+def format_trust(phone: str):
+    profile = get_profile(phone)
+
+    if not profile:
+        return "🛡️ New user"
+
+    trust_score = profile.get("trust_score") or 25
+    trust_rank = profile.get("trust_rank") or "New Seller"
+    successful_deals = profile.get("successful_deals") or 0
+    total_matches = profile.get("total_matches_allocated") or 0
+
+    return f"🛡️ {trust_score}% {trust_rank} | Deals: {successful_deals}/{total_matches}"
 
 
 @router.get("/")
@@ -69,11 +88,20 @@ async def receive_message(request: Request):
         if is_blocked_user(sender_phone):
             return {"status": "blocked_user_ignored"}
 
+        # Feedback flow must run before normal menu commands
+        feedback_result = handle_feedback_response(sender_phone, incoming_message)
+
+        if feedback_result and feedback_result.get("handled"):
+            send_whatsapp_message(sender_phone, feedback_result.get("reply"))
+            return {"status": "feedback_handled"}
+
+        # Registration flow
         if not has_completed_registration(sender_phone):
             reply = handle_registration_message(sender_phone, incoming_message)
             send_whatsapp_message(sender_phone, reply)
             return {"status": "registration_flow"}
 
+        # Fraud report flow
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
 
@@ -100,6 +128,7 @@ async def receive_message(request: Request):
 
             return {"status": "fraud_report_created", "report": report}
 
+        # Seller decision flow
         seller_deal = find_pending_seller_decision(sender_phone)
 
         if seller_deal and incoming_message in ["1", "2", "3"]:
@@ -115,6 +144,7 @@ async def receive_message(request: Request):
             if incoming_message == "1":
                 update_seller_decision(seller_deal.get("id"), "share_contacts")
                 update_deal_status(seller_deal.get("id"), "confirmed")
+                schedule_deal_feedback(seller_deal.get("id"))
 
                 buyer_phone = seller_deal.get("buyer_phone")
                 seller_phone = seller_deal.get("seller_phone")
@@ -169,6 +199,7 @@ async def receive_message(request: Request):
 
                 return {"status": "seller_cancelled_deal"}
 
+        # Buyer interest flow
         if incoming_message.lower() in ["yes", "1"]:
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
@@ -214,6 +245,7 @@ async def receive_message(request: Request):
 
             return {"status": "seller_approval_requested"}
 
+        # Daily spam limit
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
@@ -223,6 +255,7 @@ async def receive_message(request: Request):
             )
             return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
 
+        # Listing flow
         extracted = extract_market_data(incoming_message)
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
@@ -270,6 +303,7 @@ async def receive_message(request: Request):
                 quantity=extracted.get("quantity"),
                 location=extracted.get("location"),
                 distance_match=buyer.get("_geo_message", "Location match"),
+                seller_trust=format_trust(sender_phone),
             )
 
             send_whatsapp_message(buyer_phone, buyer_message)

@@ -53,6 +53,8 @@ Quantity: {quantity}
 Seller Location: {location}
 Distance Match: {distance_match}
 
+Seller Trust: {seller_trust}
+
 Reply:
 ✅ 1 = Interested
 ❌ 2 = Not interested
@@ -65,6 +67,8 @@ Huwandu: {quantity}
 Nzvimbo yemutengesi: {location}
 Kuswedera kwenzvimbo: {distance_match}
 
+Trust yemutengesi: {seller_trust}
+
 Pindura:
 ✅ 1 = Ndinofarira
 ❌ 2 = Handifariri
@@ -76,6 +80,8 @@ Impahla: {commodity}
 Inani: {quantity}
 Indawo yomthengisi: {location}
 Ukusondelana kwendawo: {distance_match}
+
+Trust yomthengisi: {seller_trust}
 
 Phendula:
 ✅ 1 = Ngiyafuna
@@ -252,6 +258,54 @@ Xhumana lomthengi ukuze liqedele i-deal.
         "english": "✅ Report received. Our team will review this user.",
         "shona": "✅ Report yatambirwa. Team yedu ichaongorora munhu uyu.",
         "ndebele": "✅ I-report yamukelwe. Ithimba lethu lizahlola lomuntu.",
+    },
+
+    "feedback_prompt": {
+        "english": """
+Did you finish the trade for {commodity}? 🧐
+
+Press:
+✅ 1 = Yes, trade was successful
+⚠️ 2 = No, the other person did not come
+""",
+        "shona": """
+Makapedza trade ye {commodity} here? 🧐
+
+Dzvanyai:
+✅ 1 = Ehe, trade yakabudirira
+⚠️ 2 = Kwete, mumwe munhu haana kuuya
+""",
+        "ndebele": """
+Liqedile i-trade ye {commodity}? 🧐
+
+Cindezela:
+✅ 1 = Yebo, i-trade iphumelele
+⚠️ 2 = Hatshi, omunye umuntu kafikanga
+""",
+    },
+
+    "feedback_invalid": {
+        "english": "Please reply 1 if trade was successful, or 2 if the other person did not come.",
+        "shona": "Pindurai 1 kana trade yakabudirira, kana 2 kana mumwe munhu asina kuuya.",
+        "ndebele": "Phendula 1 nxa i-trade iphumelele, kumbe 2 nxa omunye umuntu engafikanga.",
+    },
+
+    "feedback_success": {
+        "english": "✅ Thank you. Trust points updated for this successful trade.",
+        "shona": "✅ Tatenda. Trust points dzawedzerwa nekuda kwe trade yabudirira.",
+        "ndebele": "✅ Siyabonga. Ama trust points engeziwe ngenxa ye trade ephumelele.",
+    },
+
+    "feedback_reported": {
+        "english": "⚠️ Report received. We will review this before affecting anyone’s reputation.",
+        "shona": "⚠️ Report yatambirwa. Tichatanga taona nyaya iyi tisati tachinja reputation yemunhu.",
+        "ndebele": "⚠️ I-report yamukelwe. Sizaqala siyihlole singakathinti reputation yomuntu.",
+    },
+
+    "feedback_deal_not_found": {
+        "english": "Deal not found.",
+        "shona": "Deal haina kuwanikwa.",
+        "ndebele": "I-deal ayitholakalanga.",
     },
 }
 

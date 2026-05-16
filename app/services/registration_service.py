@@ -5,9 +5,9 @@ from app.services.session_service import get_session, set_session, clear_session
 LANGUAGE_PROMPT = """
 🌍 Choose your language / Shandura mutauro / Khetha ulimi
 
-1. English
-2. Shona
-3. Ndebele
+English
+Shona
+Ndebele
 """
 
 NAME_PROMPTS = {
@@ -20,23 +20,23 @@ ROLE_PROMPTS = {
     "english": """
 Hi {name}. What do you want to do?
 
-💵 1. Buy
-🐄 2. Sell
-🔁 3. Both
+Buy
+Sell
+Both
 """,
     "shona": """
 Mhoroi {name}. Munoda kuita chii?
 
-💵 1. Kutenga
-🐄 2. Kutengesa
-🔁 3. Zvese
+Kutenga
+Kutengesa
+Zvese
 """,
     "ndebele": """
 Sawubona {name}. Ufuna ukwenzani?
 
-💵 1. Ukuthenga
-🐄 2. Ukuthengisa
-🔁 3. Kokubili
+Ukuthenga
+Ukuthengisa
+Kokubili
 """,
 }
 
@@ -105,30 +105,30 @@ Ungathumela:
 
 
 def normalize_language(choice: str):
-    choice = choice.strip()
+    choice = choice.strip().lower()
 
-    if choice == "1":
+    if choice in ["1", "english", "eng"]:
         return "english"
 
-    if choice == "2":
+    if choice in ["2", "shona", "chi shona", "chishona"]:
         return "shona"
 
-    if choice == "3":
+    if choice in ["3", "ndebele", "isindebele"]:
         return "ndebele"
 
     return None
 
 
 def normalize_role(choice: str):
-    choice = choice.strip()
+    choice = choice.strip().lower()
 
-    if choice == "1":
+    if choice in ["1", "buy", "buyer", "kutenga", "ukuthenga"]:
         return "buyer"
 
-    if choice == "2":
+    if choice in ["2", "sell", "seller", "kutengesa", "ukuthengisa"]:
         return "seller"
 
-    if choice == "3":
+    if choice in ["3", "both", "zvese", "kokubili"]:
         return "both"
 
     return None
@@ -177,9 +177,7 @@ def handle_registration_message(phone: str, message: str):
         role = normalize_role(message_clean)
 
         if not role:
-            return ROLE_PROMPTS[language].format(
-                name=temp_data.get("name", "")
-            )
+            return ROLE_PROMPTS[language].format(name=temp_data.get("name", ""))
 
         temp_data["role"] = role
         set_session(phone, "enter_location", temp_data)
@@ -216,15 +214,16 @@ def handle_registration_message(phone: str, message: str):
             "neighborhood": temp_data.get("neighborhood"),
             "agreed_terms": True,
             "free_daily_tokens": 3,
+            "daily_tokens": 3,
             "ghost_match_strikes": 0,
             "verified": False,
             "reputation": 0,
+            "trust_score": 25,
+            "trust_rank": "New Seller",
         })
 
         clear_session(phone)
 
-        return DONE_MESSAGES[language].format(
-            name=temp_data.get("name", "")
-        )
+        return DONE_MESSAGES[language].format(name=temp_data.get("name", ""))
 
     return start_registration(phone)
