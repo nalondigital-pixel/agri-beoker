@@ -1,4 +1,5 @@
 from app.db.supabase_client import supabase
+from app.services.geo_service import are_locations_compatible
 
 
 def normalize_text(value):
@@ -10,7 +11,7 @@ def normalize_text(value):
 
 def find_matches(listing):
     commodity = normalize_text(listing.get("commodity"))
-    location = normalize_text(listing.get("location"))
+    seller_location = normalize_text(listing.get("location"))
 
     response = supabase.table("buyers").select("*").execute()
 
@@ -26,15 +27,14 @@ def find_matches(listing):
             or buyer_commodity in commodity
         )
 
-        location_match = (
-            location in buyer_location
-            or buyer_location in location
+        location_match = are_locations_compatible(
+            seller_location,
+            buyer_location
         )
 
         if commodity_match and location_match:
             matches.append(buyer)
 
-    # Verified buyers first, then highest reputation, then most deals
     matches.sort(
         key=lambda buyer: (
             buyer.get("verified") is True,
