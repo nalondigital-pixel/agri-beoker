@@ -3,325 +3,340 @@
 <head>
     <title>Agri Broker Dashboard</title>
     <style>
+        * { box-sizing: border-box; }
+
         body {
             font-family: Arial, sans-serif;
-            margin: 30px;
-            background: #f5f5f5;
-            color: #222;
+            margin: 0;
+            background: #f3f5f2;
+            color: #1f2933;
         }
 
-        h1 {
-            color: #1f4d2b;
-            margin-bottom: 5px;
+        header {
+            background: #1f4d2b;
+            color: white;
+            padding: 22px 32px;
         }
 
-        h2 {
-            margin-top: 40px;
-            color: #333;
+        header h1 {
+            margin: 0;
+            font-size: 26px;
         }
 
-        .subtitle {
-            color: #666;
-            margin-bottom: 25px;
+        header p {
+            margin: 6px 0 0;
+            color: #d7eadc;
+        }
+
+        main {
+            padding: 28px 32px;
         }
 
         .stats {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 12px;
-            margin-bottom: 25px;
+            grid-template-columns: repeat(6, minmax(140px, 1fr));
+            gap: 14px;
+            margin-bottom: 30px;
         }
 
         .card {
             background: white;
-            padding: 15px;
-            border-radius: 8px;
+            padding: 18px;
+            border-radius: 12px;
             border: 1px solid #ddd;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+
+        .card span {
+            color: #667085;
+            font-size: 13px;
         }
 
         .card strong {
             display: block;
+            font-size: 28px;
+            margin-top: 6px;
             color: #1f4d2b;
-            font-size: 22px;
-            margin-top: 5px;
+        }
+
+        section {
+            margin-bottom: 36px;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            color: #243b2a;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            margin-top: 10px;
-            margin-bottom: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #ddd;
         }
 
         th, td {
-            padding: 10px;
-            border: 1px solid #ddd;
+            padding: 11px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
             font-size: 14px;
             vertical-align: top;
         }
 
         th {
-            background: #1f4d2b;
-            color: white;
-            text-align: left;
-        }
-
-        .verified {
-            color: green;
+            background: #e6f1e8;
+            color: #1f4d2b;
             font-weight: bold;
         }
 
-        .unverified {
-            color: #999;
+        tr:hover td {
+            background: #fafafa;
         }
 
-        .status-confirmed {
-            color: green;
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
             font-weight: bold;
         }
 
-        .status-pending,
-        .status-open {
-            color: #b36b00;
-            font-weight: bold;
-        }
+        .verified { background: #dcfce7; color: #166534; }
+        .unverified { background: #f3f4f6; color: #6b7280; }
+        .confirmed { background: #dcfce7; color: #166534; }
+        .pending { background: #fef3c7; color: #92400e; }
+        .open { background: #fee2e2; color: #991b1b; }
 
         .empty {
             background: white;
-            padding: 12px;
+            padding: 16px;
+            border-radius: 12px;
             border: 1px solid #ddd;
             color: #777;
-            border-radius: 8px;
         }
 
         .small {
             font-size: 12px;
-            color: #666;
+            color: #667085;
+            max-width: 260px;
+            word-break: break-word;
+        }
+
+        @media (max-width: 900px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            main {
+                padding: 18px;
+            }
+
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
         }
     </style>
 </head>
 
 <body>
 
+<header>
     <h1>Agri Broker Dashboard</h1>
-    <div class="subtitle">Live marketplace operations dashboard</div>
+    <p>Marketplace operations, trust, deals, and learning queue</p>
+</header>
+
+<main>
 
     <div class="stats">
-        <div class="card">
-            Listings
-            <strong>{{ listings|length }}</strong>
-        </div>
-
-        <div class="card">
-            Buyers
-            <strong>{{ buyers|length }}</strong>
-        </div>
-
-        <div class="card">
-            Deals
-            <strong>{{ deals|length }}</strong>
-        </div>
-
-        <div class="card">
-            Blocked
-            <strong>{{ blocked_users|length }}</strong>
-        </div>
-
-        <div class="card">
-            Fraud Reports
-            <strong>{{ fraud_reports|length }}</strong>
-        </div>
-
-        <div class="card">
-            Learning Queue
-            <strong>{{ unknown_terms|length }}</strong>
-        </div>
+        <div class="card"><span>Listings</span><strong>{{ listings|length }}</strong></div>
+        <div class="card"><span>Buyers</span><strong>{{ buyers|length }}</strong></div>
+        <div class="card"><span>Deals</span><strong>{{ deals|length }}</strong></div>
+        <div class="card"><span>Blocked</span><strong>{{ blocked_users|length }}</strong></div>
+        <div class="card"><span>Fraud Reports</span><strong>{{ fraud_reports|length }}</strong></div>
+        <div class="card"><span>Learning Queue</span><strong>{{ unknown_terms|length }}</strong></div>
     </div>
 
-    <h2>Recent Listings</h2>
+    <section>
+        <h2>Recent Listings</h2>
+        {% if listings %}
+        <table>
+            <tr>
+                <th>Commodity</th>
+                <th>Quantity</th>
+                <th>Location</th>
+                <th>Intent</th>
+                <th>Seller</th>
+                <th>Raw Message</th>
+                <th>Created</th>
+            </tr>
+            {% for item in listings %}
+            <tr>
+                <td>{{ item.commodity }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.location }}</td>
+                <td>{{ item.intent }}</td>
+                <td>{{ item.seller_phone }}</td>
+                <td class="small">{{ item.raw_message }}</td>
+                <td>{{ item.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No listings yet.</div>
+        {% endif %}
+    </section>
 
-    {% if listings %}
-    <table>
-        <tr>
-            <th>Commodity</th>
-            <th>Quantity</th>
-            <th>Location</th>
-            <th>Intent</th>
-            <th>Seller Phone</th>
-            <th>Raw Message</th>
-            <th>Created</th>
-        </tr>
+    <section>
+        <h2>Buyers</h2>
+        {% if buyers %}
+        <table>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Reputation</th>
+                <th>Total Deals</th>
+                <th>Commodity</th>
+                <th>Quantity</th>
+                <th>Location</th>
+                <th>Phone</th>
+            </tr>
+            {% for buyer in buyers %}
+            <tr>
+                <td>{{ buyer.name }}</td>
+                <td>
+                    {% if buyer.verified %}
+                        <span class="badge verified">Verified</span>
+                    {% else %}
+                        <span class="badge unverified">Unverified</span>
+                    {% endif %}
+                </td>
+                <td>{{ buyer.reputation }}</td>
+                <td>{{ buyer.total_deals }}</td>
+                <td>{{ buyer.commodity }}</td>
+                <td>{{ buyer.quantity }}</td>
+                <td>{{ buyer.location }}</td>
+                <td>{{ buyer.phone }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No buyers yet.</div>
+        {% endif %}
+    </section>
 
-        {% for item in listings %}
-        <tr>
-            <td>{{ item.commodity }}</td>
-            <td>{{ item.quantity }}</td>
-            <td>{{ item.location }}</td>
-            <td>{{ item.intent }}</td>
-            <td>{{ item.seller_phone }}</td>
-            <td>{{ item.raw_message }}</td>
-            <td>{{ item.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No listings yet.</div>
-    {% endif %}
+    <section>
+        <h2>Deals</h2>
+        {% if deals %}
+        <table>
+            <tr>
+                <th>Deal ID</th>
+                <th>Listing ID</th>
+                <th>Buyer Phone</th>
+                <th>Seller Phone</th>
+                <th>Status</th>
+                <th>Created</th>
+            </tr>
+            {% for deal in deals %}
+            <tr>
+                <td class="small">{{ deal.id }}</td>
+                <td class="small">{{ deal.listing_id }}</td>
+                <td>{{ deal.buyer_phone }}</td>
+                <td>{{ deal.seller_phone }}</td>
+                <td>
+                    {% if deal.status == "confirmed" %}
+                        <span class="badge confirmed">Confirmed</span>
+                    {% else %}
+                        <span class="badge pending">{{ deal.status }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ deal.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No deals yet.</div>
+        {% endif %}
+    </section>
 
-    <h2>Buyers</h2>
+    <section>
+        <h2>Fraud Reports</h2>
+        {% if fraud_reports %}
+        <table>
+            <tr>
+                <th>Reporter</th>
+                <th>Reported</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Created</th>
+            </tr>
+            {% for report in fraud_reports %}
+            <tr>
+                <td>{{ report.reporter_phone }}</td>
+                <td>{{ report.reported_phone }}</td>
+                <td>{{ report.reason }}</td>
+                <td><span class="badge open">{{ report.status }}</span></td>
+                <td>{{ report.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No fraud reports.</div>
+        {% endif %}
+    </section>
 
-    {% if buyers %}
-    <table>
-        <tr>
-            <th>Name</th>
-            <th>Verified</th>
-            <th>Reputation</th>
-            <th>Total Deals</th>
-            <th>Commodity</th>
-            <th>Quantity</th>
-            <th>Location</th>
-            <th>Phone</th>
-        </tr>
+    <section>
+        <h2>Blocked Users</h2>
+        {% if blocked_users %}
+        <table>
+            <tr>
+                <th>Phone</th>
+                <th>Reason</th>
+                <th>Created</th>
+            </tr>
+            {% for user in blocked_users %}
+            <tr>
+                <td>{{ user.phone }}</td>
+                <td>{{ user.reason }}</td>
+                <td>{{ user.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No blocked users.</div>
+        {% endif %}
+    </section>
 
-        {% for buyer in buyers %}
-        <tr>
-            <td>{{ buyer.name }}</td>
+    <section>
+        <h2>Unknown Terms Learning Queue</h2>
+        {% if unknown_terms %}
+        <table>
+            <tr>
+                <th>Term</th>
+                <th>Count</th>
+                <th>Status</th>
+                <th>Context</th>
+                <th>Created</th>
+            </tr>
+            {% for term in unknown_terms %}
+            <tr>
+                <td>{{ term.term }}</td>
+                <td>{{ term.count }}</td>
+                <td>{{ term.status }}</td>
+                <td class="small">{{ term.context }}</td>
+                <td>{{ term.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% else %}
+        <div class="empty">No unknown terms yet.</div>
+        {% endif %}
+    </section>
 
-            <td>
-                {% if buyer.verified %}
-                    <span class="verified">Verified</span>
-                {% else %}
-                    <span class="unverified">Unverified</span>
-                {% endif %}
-            </td>
-
-            <td>{{ buyer.reputation }}</td>
-            <td>{{ buyer.total_deals }}</td>
-            <td>{{ buyer.commodity }}</td>
-            <td>{{ buyer.quantity }}</td>
-            <td>{{ buyer.location }}</td>
-            <td>{{ buyer.phone }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No buyers yet.</div>
-    {% endif %}
-
-    <h2>Deals</h2>
-
-    {% if deals %}
-    <table>
-        <tr>
-            <th>Deal ID</th>
-            <th>Listing ID</th>
-            <th>Buyer Phone</th>
-            <th>Seller Phone</th>
-            <th>Status</th>
-            <th>Created</th>
-        </tr>
-
-        {% for deal in deals %}
-        <tr>
-            <td class="small">{{ deal.id }}</td>
-            <td class="small">{{ deal.listing_id }}</td>
-            <td>{{ deal.buyer_phone }}</td>
-            <td>{{ deal.seller_phone }}</td>
-            <td>
-                {% if deal.status == "confirmed" %}
-                    <span class="status-confirmed">{{ deal.status }}</span>
-                {% else %}
-                    <span class="status-pending">{{ deal.status }}</span>
-                {% endif %}
-            </td>
-            <td>{{ deal.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No deals yet.</div>
-    {% endif %}
-
-    <h2>Blocked Users</h2>
-
-    {% if blocked_users %}
-    <table>
-        <tr>
-            <th>Phone</th>
-            <th>Reason</th>
-            <th>Created</th>
-        </tr>
-
-        {% for user in blocked_users %}
-        <tr>
-            <td>{{ user.phone }}</td>
-            <td>{{ user.reason }}</td>
-            <td>{{ user.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No blocked users.</div>
-    {% endif %}
-
-    <h2>Fraud Reports</h2>
-
-    {% if fraud_reports %}
-    <table>
-        <tr>
-            <th>Reporter</th>
-            <th>Reported</th>
-            <th>Reason</th>
-            <th>Status</th>
-            <th>Created</th>
-        </tr>
-
-        {% for report in fraud_reports %}
-        <tr>
-            <td>{{ report.reporter_phone }}</td>
-            <td>{{ report.reported_phone }}</td>
-            <td>{{ report.reason }}</td>
-            <td>
-                {% if report.status == "open" %}
-                    <span class="status-open">{{ report.status }}</span>
-                {% else %}
-                    {{ report.status }}
-                {% endif %}
-            </td>
-            <td>{{ report.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No fraud reports.</div>
-    {% endif %}
-
-    <h2>Unknown Terms Learning Queue</h2>
-
-    {% if unknown_terms %}
-    <table>
-        <tr>
-            <th>Term</th>
-            <th>Count</th>
-            <th>Status</th>
-            <th>Context</th>
-            <th>Created</th>
-        </tr>
-
-        {% for term in unknown_terms %}
-        <tr>
-            <td>{{ term.term }}</td>
-            <td>{{ term.count }}</td>
-            <td>{{ term.status }}</td>
-            <td>{{ term.context }}</td>
-            <td>{{ term.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-    {% else %}
-    <div class="empty">No unknown terms yet.</div>
-    {% endif %}
+</main>
 
 </body>
 </html>
