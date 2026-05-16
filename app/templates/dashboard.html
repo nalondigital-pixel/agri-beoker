@@ -3,62 +3,175 @@
 <head>
     <title>Agri Broker Dashboard</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 30px; background: #f5f5f5; }
-        h1 { color: #1f4d2b; }
-        h2 { margin-top: 40px; color: #333; }
-        table { width: 100%; border-collapse: collapse; background: white; margin-top: 10px; }
-        th, td { padding: 10px; border: 1px solid #ddd; font-size: 14px; }
-        th { background: #1f4d2b; color: white; text-align: left; }
-        .card { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f5f5f5;
+            color: #222;
+        }
+
+        h1 {
+            color: #1f4d2b;
+            margin-bottom: 5px;
+        }
+
+        h2 {
+            margin-top: 40px;
+            color: #333;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .card strong {
+            display: block;
+            color: #1f4d2b;
+            font-size: 22px;
+            margin-top: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+            vertical-align: top;
+        }
+
+        th {
+            background: #1f4d2b;
+            color: white;
+            text-align: left;
+        }
+
+        .verified {
+            color: green;
+            font-weight: bold;
+        }
+
+        .unverified {
+            color: #999;
+        }
+
+        .status-confirmed {
+            color: green;
+            font-weight: bold;
+        }
+
+        .status-pending,
+        .status-open {
+            color: #b36b00;
+            font-weight: bold;
+        }
+
+        .empty {
+            background: white;
+            padding: 12px;
+            border: 1px solid #ddd;
+            color: #777;
+            border-radius: 8px;
+        }
+
+        .small {
+            font-size: 12px;
+            color: #666;
+        }
     </style>
 </head>
-<h2>Blocked Users</h2>
-<table>
-    <tr>
-        <th>Phone</th>
-        <th>Reason</th>
-        <th>Created</th>
-    </tr>
-    {% for user in blocked_users %}
-    <tr>
-        <td>{{ user.phone }}</td>
-        <td>{{ user.reason }}</td>
-        <td>{{ user.created_at }}</td>
-    </tr>
-    {% endfor %}
-</table>
-
-<h2>Fraud Reports</h2>
-<table>
-    <tr>
-        <th>Reporter</th>
-        <th>Reported</th>
-        <th>Reason</th>
-        <th>Status</th>
-        <th>Created</th>
-    </tr>
-    {% for report in fraud_reports %}
-    <tr>
-        <td>{{ report.reporter_phone }}</td>
-        <td>{{ report.reported_phone }}</td>
-        <td>{{ report.reason }}</td>
-        <td>{{ report.status }}</td>
-        <td>{{ report.created_at }}</td>
-    </tr>
-    {% endfor %}
-</table>
 
 <body>
 
     <h1>Agri Broker Dashboard</h1>
+    <div class="subtitle">Live marketplace operations dashboard</div>
 
-    <div class="card">
-        <strong>Listings:</strong> {{ listings|length }} |
-        <strong>Buyers:</strong> {{ buyers|length }} |
-        <strong>Deals:</strong> {{ deals|length }}
+    <div class="stats">
+        <div class="card">
+            Listings
+            <strong>{{ listings|length }}</strong>
+        </div>
+
+        <div class="card">
+            Buyers
+            <strong>{{ buyers|length }}</strong>
+        </div>
+
+        <div class="card">
+            Deals
+            <strong>{{ deals|length }}</strong>
+        </div>
+
+        <div class="card">
+            Blocked
+            <strong>{{ blocked_users|length }}</strong>
+        </div>
+
+        <div class="card">
+            Fraud Reports
+            <strong>{{ fraud_reports|length }}</strong>
+        </div>
+
+        <div class="card">
+            Learning Queue
+            <strong>{{ unknown_terms|length }}</strong>
+        </div>
     </div>
 
     <h2>Recent Listings</h2>
+
+    {% if listings %}
+    <table>
+        <tr>
+            <th>Commodity</th>
+            <th>Quantity</th>
+            <th>Location</th>
+            <th>Intent</th>
+            <th>Seller Phone</th>
+            <th>Raw Message</th>
+            <th>Created</th>
+        </tr>
+
+        {% for item in listings %}
+        <tr>
+            <td>{{ item.commodity }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.location }}</td>
+            <td>{{ item.intent }}</td>
+            <td>{{ item.seller_phone }}</td>
+            <td>{{ item.raw_message }}</td>
+            <td>{{ item.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No listings yet.</div>
+    {% endif %}
+
+    <h2>Buyers</h2>
+
+    {% if buyers %}
     <table>
         <tr>
             <th>Name</th>
@@ -70,21 +183,21 @@
             <th>Location</th>
             <th>Phone</th>
         </tr>
-        {% for item in listings %}
+
+        {% for buyer in buyers %}
         <tr>
             <td>{{ buyer.name }}</td>
 
             <td>
                 {% if buyer.verified %}
-                    Verified
+                    <span class="verified">Verified</span>
                 {% else %}
-                        Unverified
+                    <span class="unverified">Unverified</span>
                 {% endif %}
             </td>
 
             <td>{{ buyer.reputation }}</td>
             <td>{{ buyer.total_deals }}</td>
-
             <td>{{ buyer.commodity }}</td>
             <td>{{ buyer.quantity }}</td>
             <td>{{ buyer.location }}</td>
@@ -92,46 +205,123 @@
         </tr>
         {% endfor %}
     </table>
-
-    <h2>Buyers</h2>
-    <table>
-        <tr>
-            <th>Name</th>
-            <th>Commodity</th>
-            <th>Quantity</th>
-            <th>Location</th>
-            <th>Phone</th>
-        </tr>
-        {% for buyer in buyers %}
-        <tr>
-            <td>{{ buyer.name }}</td>
-            <td>{{ buyer.commodity }}</td>
-            <td>{{ buyer.quantity }}</td>
-            <td>{{ buyer.location }}</td>
-            <td>{{ buyer.phone }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+    {% else %}
+    <div class="empty">No buyers yet.</div>
+    {% endif %}
 
     <h2>Deals</h2>
+
+    {% if deals %}
     <table>
         <tr>
             <th>Deal ID</th>
             <th>Listing ID</th>
             <th>Buyer Phone</th>
+            <th>Seller Phone</th>
             <th>Status</th>
             <th>Created</th>
         </tr>
+
         {% for deal in deals %}
         <tr>
-            <td>{{ deal.id }}</td>
-            <td>{{ deal.listing_id }}</td>
+            <td class="small">{{ deal.id }}</td>
+            <td class="small">{{ deal.listing_id }}</td>
             <td>{{ deal.buyer_phone }}</td>
-            <td>{{ deal.status }}</td>
+            <td>{{ deal.seller_phone }}</td>
+            <td>
+                {% if deal.status == "confirmed" %}
+                    <span class="status-confirmed">{{ deal.status }}</span>
+                {% else %}
+                    <span class="status-pending">{{ deal.status }}</span>
+                {% endif %}
+            </td>
             <td>{{ deal.created_at }}</td>
         </tr>
         {% endfor %}
     </table>
+    {% else %}
+    <div class="empty">No deals yet.</div>
+    {% endif %}
+
+    <h2>Blocked Users</h2>
+
+    {% if blocked_users %}
+    <table>
+        <tr>
+            <th>Phone</th>
+            <th>Reason</th>
+            <th>Created</th>
+        </tr>
+
+        {% for user in blocked_users %}
+        <tr>
+            <td>{{ user.phone }}</td>
+            <td>{{ user.reason }}</td>
+            <td>{{ user.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No blocked users.</div>
+    {% endif %}
+
+    <h2>Fraud Reports</h2>
+
+    {% if fraud_reports %}
+    <table>
+        <tr>
+            <th>Reporter</th>
+            <th>Reported</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+
+        {% for report in fraud_reports %}
+        <tr>
+            <td>{{ report.reporter_phone }}</td>
+            <td>{{ report.reported_phone }}</td>
+            <td>{{ report.reason }}</td>
+            <td>
+                {% if report.status == "open" %}
+                    <span class="status-open">{{ report.status }}</span>
+                {% else %}
+                    {{ report.status }}
+                {% endif %}
+            </td>
+            <td>{{ report.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No fraud reports.</div>
+    {% endif %}
+
+    <h2>Unknown Terms Learning Queue</h2>
+
+    {% if unknown_terms %}
+    <table>
+        <tr>
+            <th>Term</th>
+            <th>Count</th>
+            <th>Status</th>
+            <th>Context</th>
+            <th>Created</th>
+        </tr>
+
+        {% for term in unknown_terms %}
+        <tr>
+            <td>{{ term.term }}</td>
+            <td>{{ term.count }}</td>
+            <td>{{ term.status }}</td>
+            <td>{{ term.context }}</td>
+            <td>{{ term.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="empty">No unknown terms yet.</div>
+    {% endif %}
 
 </body>
 </html>
