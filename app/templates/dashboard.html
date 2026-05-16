@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agri Broker Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f5f5f5; }
+        h1 { color: #1f4d2b; }
+        h2 { margin-top: 40px; color: #333; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-top: 10px; }
+        th, td { padding: 10px; border: 1px solid #ddd; font-size: 14px; }
+        th { background: #1f4d2b; color: white; text-align: left; }
+        .card { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <h1>Agri Broker Dashboard</h1>
+
+    <div class="card">
+        <strong>Listings:</strong> {{ listings|length }} |
+        <strong>Buyers:</strong> {{ buyers|length }} |
+        <strong>Deals:</strong> {{ deals|length }}
+    </div>
+
+    <h2>Recent Listings</h2>
+    <table>
+        <tr>
+            <th>Commodity</th>
+            <th>Quantity</th>
+            <th>Location</th>
+            <th>Seller Phone</th>
+            <th>Created</th>
+        </tr>
+        {% for item in listings %}
+        <tr>
+            <td>{{ item.commodity }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.location }}</td>
+            <td>{{ item.seller_phone }}</td>
+            <td>{{ item.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Buyers</h2>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Commodity</th>
+            <th>Quantity</th>
+            <th>Location</th>
+            <th>Phone</th>
+        </tr>
+        {% for buyer in buyers %}
+        <tr>
+            <td>{{ buyer.name }}</td>
+            <td>{{ buyer.commodity }}</td>
+            <td>{{ buyer.quantity }}</td>
+            <td>{{ buyer.location }}</td>
+            <td>{{ buyer.phone }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h2>Deals</h2>
+    <table>
+        <tr>
+            <th>Deal ID</th>
+            <th>Listing ID</th>
+            <th>Buyer Phone</th>
+            <th>Status</th>
+            <th>Created</th>
+        </tr>
+        {% for deal in deals %}
+        <tr>
+            <td>{{ deal.id }}</td>
+            <td>{{ deal.listing_id }}</td>
+            <td>{{ deal.buyer_phone }}</td>
+            <td>{{ deal.status }}</td>
+            <td>{{ deal.created_at }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+</body>
+</html>
