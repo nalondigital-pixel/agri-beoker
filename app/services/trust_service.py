@@ -29,12 +29,19 @@ def block_user(phone: str, reason: str):
     return response.data
 
 
+from datetime import datetime, timedelta, timezone
+
+
 def count_today_listings_by_seller(phone: str) -> int:
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=1)
+    ).isoformat()
+
     response = (
         supabase.table("listings")
         .select("id")
         .eq("seller_phone", phone)
-        .gte("created_at", "now() - interval '1 day'")
+        .gte("created_at", since)
         .execute()
     )
 
