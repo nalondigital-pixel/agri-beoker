@@ -11,6 +11,7 @@ from app.services.deal_service import (
     find_pending_deal_by_buyer_phone,
     update_deal_status,
 )
+from app.services.trust_service import is_blocked_user
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -34,7 +35,14 @@ async def receive_message(request: Request):
 
     try:
         value = data["entry"][0]["changes"][0]["value"]
+
+        if "messages" not in value:
+            return {"status": "ignored_non_message_event"}
+
         message_data = value["messages"][0]
+
+        if "text" not in message_data:
+            return {"status": "ignored_non_text_message"}
 
         incoming_message = message_data["text"]["body"].strip()
         sender_phone = message_data["from"]
@@ -42,6 +50,10 @@ async def receive_message(request: Request):
         print("\n========== INCOMING MESSAGE ==========")
         print("FROM:", sender_phone)
         print("MESSAGE:", incoming_message)
+
+        if is_blocked_user(sender_phone):
+            print("Blocked user ignored:", sender_phone)
+            return {"status": "blocked_user_ignored"}
 
         if incoming_message.lower() == "yes":
             deal = find_pending_deal_by_buyer_phone(sender_phone)
@@ -135,7 +147,7 @@ Please contact the buyer to complete the deal.
                 continue
 
             buyer_message = f"""
-🚜 AGRI MATCH ALERT 🚜
+ AGRI MATCH ALERT 
 
 Commodity: {extracted.get('commodity')}
 Quantity: {extracted.get('quantity')}
