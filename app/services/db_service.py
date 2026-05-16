@@ -6,6 +6,8 @@ def save_listing(data):
         "type": data.get("type", "listing"),
         "commodity": data.get("commodity"),
         "quantity": data.get("quantity"),
+        "unit": data.get("unit"),
+        "raw_quantity_text": data.get("raw_quantity_text"),
         "location": data.get("location"),
         "intent": data.get("intent"),
         "confidence": data.get("confidence"),

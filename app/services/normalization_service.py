@@ -7,19 +7,68 @@ from app.db.supabase_client import supabase
 COMMON_COMMODITIES = {
     "tomato": "tomato",
     "tomatoes": "tomato",
+    "matomatisi": "tomato",
+
     "onion": "onion",
     "onions": "onion",
+
     "potato": "potato",
     "potatoes": "potato",
+
     "maize": "maize",
     "corn": "maize",
+    "chibage": "maize",
+
+    "beans": "beans",
+    "bean": "beans",
+    "nyemba": "beans",
+
+    "beef": "beef",
+    "nyama": "beef",
+
     "cattle": "cattle",
     "cow": "cattle",
     "cows": "cattle",
+    "mombe": "cattle",
+
     "goat": "goat",
     "goats": "goat",
+    "mbudzi": "goat",
+
     "chicken": "chicken",
     "chickens": "chicken",
+    "huku": "chicken",
+}
+
+
+UNIT_ALIASES = {
+    "bag": "bags",
+    "bags": "bags",
+    "sack": "bags",
+    "sacks": "bags",
+
+    "kg": "kg",
+    "kgs": "kg",
+    "kilogram": "kg",
+    "kilograms": "kg",
+
+    "bucket": "buckets",
+    "buckets": "buckets",
+    "bucketful": "buckets",
+
+    "crate": "crates",
+    "crates": "crates",
+
+    "box": "boxes",
+    "boxes": "boxes",
+
+    "ton": "tons",
+    "tons": "tons",
+    "tonne": "tons",
+    "tonnes": "tons",
+
+    "head": "head",
+    "heads": "head",
 }
 
 
@@ -27,7 +76,12 @@ STOP_WORDS = {
     "ndine", "ndiri", "ku", "mu", "pa", "pane", "i", "have",
     "selling", "sell", "available", "in", "at", "the", "a",
     "an", "with", "and", "for", "to", "of", "dziri", "dzinotengeswa",
+    "bags", "bag", "kgs", "kg", "bucket", "buckets", "crate", "crates",
+    "box", "boxes", "ton", "tons", "tonne", "tonnes",
 }
+
+
+AUTO_PROMOTE_THRESHOLD = 5
 
 
 def clean_text(value: str) -> str:
@@ -61,15 +115,48 @@ def get_alias_map():
     return alias_map
 
 
-def normalize_commodity(value: str):
-    """
-    Converts slang/local/typo commodity names into a standard commodity name.
-    Example:
-    - mombe -> cattle
-    - mbudzi -> goat
-    - chibage -> maize
-    """
+def normalize_unit(value: str):
+    value = clean_text(value)
 
+    if not value:
+        return None
+
+    if value in UNIT_ALIASES:
+        return UNIT_ALIASES[value]
+
+    close = get_close_matches(value, UNIT_ALIASES.keys(), n=1, cutoff=0.84)
+
+    if close:
+        return UNIT_ALIASES[close[0]]
+
+    return value
+
+
+def extract_quantity_and_unit(text: str):
+    tokens = tokenize(text)
+
+    for index, token in enumerate(tokens):
+        if token.isdigit():
+            quantity = int(token)
+            unit = None
+
+            if index + 1 < len(tokens):
+                possible_unit = normalize_unit(tokens[index + 1])
+
+                if possible_unit:
+                    unit = possible_unit
+
+            raw_quantity_text = token
+
+            if unit:
+                raw_quantity_text = f"{quantity} {unit}"
+
+            return quantity, unit, raw_quantity_text
+
+    return None, None, None
+
+
+def normalize_commodity(value: str):
     if not value:
         return None
 
@@ -79,30 +166,12 @@ def normalize_commodity(value: str):
     if value in alias_map:
         return alias_map[value]
 
-    close = get_close_matches(
-        value,
-        alias_map.keys(),
-        n=1,
-        cutoff=0.82
-    )
+    close = get_close_matches(value, alias_map.keys(), n=1, cutoff=0.82)
 
     if close:
         return alias_map[close[0]]
 
-    if value in COMMON_COMMODITIES:
-        return COMMON_COMMODITIES[value]
-
     return value
-
-
-def extract_quantity_from_text(text: str):
-    tokens = tokenize(text)
-
-    for token in tokens:
-        if token.isdigit():
-            return int(token)
-
-    return None
 
 
 def guess_commodity_from_text(text: str):
@@ -114,12 +183,7 @@ def guess_commodity_from_text(text: str):
             return alias_map[token]
 
     for token in tokens:
-        close = get_close_matches(
-            token,
-            alias_map.keys(),
-            n=1,
-            cutoff=0.82
-        )
+        close = get_close_matches(token, alias_map.keys(), n=1, cutoff=0.82)
 
         if close:
             return alias_map[close[0]]
@@ -155,6 +219,9 @@ def log_unknown_term(term: str, context: str):
             "context": context,
         }).eq("id", row["id"]).execute()
 
+        if new_count >= AUTO_PROMOTE_THRESHOLD:
+            auto_promote_unknown_term(term)
+
         return row
 
     response = (
@@ -174,18 +241,60 @@ def log_unknown_term(term: str, context: str):
     return None
 
 
+def auto_promote_unknown_term(term: str):
+    """
+    Safe-ish auto learning:
+    If a term appears many times, we add it as its own commodity.
+    Example: 'beef' appears often -> beef becomes known.
+    Admin can later edit normalized value if needed.
+    """
+
+    term = clean_text(term)
+
+    if not term:
+        return None
+
+    existing_alias = (
+        supabase.table("commodity_aliases")
+        .select("*")
+        .eq("alias", term)
+        .limit(1)
+        .execute()
+    )
+
+    if existing_alias.data:
+        return existing_alias.data[0]
+
+    response = (
+        supabase.table("commodity_aliases")
+        .insert({
+            "alias": term,
+            "normalized": term,
+            "auto_learned": True,
+        })
+        .execute()
+    )
+
+    supabase.table("unknown_terms").update({
+        "status": "auto_promoted",
+        "auto_promoted": True,
+        "suggested_normalized": term,
+    }).eq("term", term).execute()
+
+    if response.data:
+        return response.data[0]
+
+    return None
+
+
 def fallback_extract_market_data(text: str):
-    """
-    Cheap fallback extractor when AI is down/rate-limited.
-    """
-
     commodity = guess_commodity_from_text(text)
-    quantity = extract_quantity_from_text(text)
+    quantity, unit, raw_quantity_text = extract_quantity_and_unit(text)
 
-    # Simple location detection for your pilot areas
     known_locations = [
         "chegutu", "kadoma", "norton", "harare",
         "kwekwe", "gweru", "chinhoyi", "bindura",
+        "ruwa", "chitungwiza", "marondera", "bulawayo",
     ]
 
     location = None
@@ -199,6 +308,8 @@ def fallback_extract_market_data(text: str):
     return {
         "commodity": commodity or "unknown",
         "quantity": quantity or 0,
+        "unit": unit,
+        "raw_quantity_text": raw_quantity_text,
         "location": location or "unknown",
         "intent": "sell",
         "confidence": 0.5,
@@ -206,20 +317,23 @@ def fallback_extract_market_data(text: str):
 
 
 def apply_normalization(extracted: dict, raw_text: str = ""):
-    """
-    Normalizes AI output and fills missing fields using fallback logic.
-    """
-
     fallback = fallback_extract_market_data(raw_text)
 
     commodity = extracted.get("commodity") or fallback.get("commodity")
     quantity = extracted.get("quantity") or fallback.get("quantity")
+    unit = extracted.get("unit") or fallback.get("unit")
+    raw_quantity_text = (
+        extracted.get("raw_quantity_text")
+        or fallback.get("raw_quantity_text")
+    )
     location = extracted.get("location") or fallback.get("location")
 
     normalized_commodity = normalize_commodity(commodity)
 
     extracted["commodity"] = normalized_commodity or commodity or "unknown"
     extracted["quantity"] = quantity or 0
+    extracted["unit"] = unit
+    extracted["raw_quantity_text"] = raw_quantity_text
     extracted["location"] = location or "unknown"
 
     return extracted
