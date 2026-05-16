@@ -5,10 +5,6 @@ from app.services.normalization_service import (
 
 
 def extract_market_data(message: str):
-    """
-    Temporary fallback-only extractor to avoid AI rate limits during testing.
-    """
-
     extracted = fallback_extract_market_data(message)
     extracted = apply_normalization(extracted, message)
 
