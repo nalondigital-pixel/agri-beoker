@@ -1,30 +1,56 @@
-from openai import OpenAI
+import os
+import time
 
-from app.config import SAMBANOVA_API_KEY, SAMBANOVA_BASE_URL
+from google import genai
+
+from app.config import GEMINI_API_KEY, GEMINI_MODEL
 
 
-client = OpenAI(
-    api_key=SAMBANOVA_API_KEY,
-    base_url=SAMBANOVA_BASE_URL,
-)
+def get_gemini_client():
+    if not GEMINI_API_KEY:
+        return None
+
+    return genai.Client(api_key=GEMINI_API_KEY)
 
 
 def transcribe_audio(file_path: str):
-    """
-    Placeholder for now.
+    client = get_gemini_client()
 
-    Important:
-    SambaNova chat API may not support audio transcription directly.
-    So this is where we will later connect:
-    - OpenAI Whisper
-    - local Whisper
-    - Groq Whisper
-    - another transcription API
+    if not client:
+        print("Gemini transcription skipped: missing GEMINI_API_KEY")
+        return None
 
-    For now, we return None so voice messages do not break the app.
-    """
+    if not file_path or not os.path.exists(file_path):
+        print("Gemini transcription skipped: file not found")
+        return None
 
-    print("Voice note received, but transcription provider is not connected yet.")
-    print("Audio saved at:", file_path)
+    try:
+        uploaded_file = client.files.upload(file=file_path)
 
-    return None
+        # Give Gemini a moment to process the uploaded audio.
+        time.sleep(1)
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                uploaded_file,
+                (
+                    "Transcribe this WhatsApp voice note. "
+                    "The speaker may use English, Shona, Ndebele, or mixed language. "
+                    "Return only the spoken text. Do not explain."
+                ),
+            ],
+        )
+
+        transcript = (response.text or "").strip()
+
+        if not transcript:
+            return None
+
+        print("Gemini transcript:", transcript)
+
+        return transcript
+
+    except Exception as e:
+        print("Gemini transcription error:", e)
+        return None

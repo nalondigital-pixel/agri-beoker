@@ -39,6 +39,23 @@ EXTRACTION_SCHEMA = {
         "price_per_unit": {
             "type": "number",
         },
+        "transport_needed": {
+            "type": "boolean",
+        },
+        "delivery_option": {
+            "type": "string",
+            "enum": [
+                "can_deliver",
+                "buyer_collects",
+                "seller_delivers",
+                "needs_transport",
+                "will_collect",
+                "unknown",
+            ],
+        },
+        "transport_note": {
+            "type": "string",
+        },
         "confidence": {
             "type": "number",
         },
@@ -52,6 +69,9 @@ EXTRACTION_SCHEMA = {
         "price",
         "currency",
         "price_per_unit",
+        "transport_needed",
+        "delivery_option",
+        "transport_note",
         "confidence",
     ],
 }
@@ -107,11 +127,20 @@ Return only JSON with these fields:
 - intent: buy, sell, or unknown
 - commodity: normalized English commodity name, singular where possible
 - quantity: numeric quantity only. If unknown, use 0.
-- unit: unit such as kg, bag, bags, crate, tonne, goat, cattle, bucket, dozen, or empty string if unknown
+- unit: kg, bag, bags, crate, tonne, goat, cattle, bucket, dozen, or empty string if unknown
 - location: town/area/location. If unknown, use empty string
 - price: total price mentioned. If no price is mentioned, use 0.
 - currency: USD, ZIG, ZAR, or empty string if unknown. In Zimbabwe, "$" usually means USD.
-- price_per_unit: price divided by quantity when possible. If user says "$6 per bag", price_per_unit is 6. If impossible, use 0.
+- price_per_unit: price divided by quantity when possible. If user says "$6 per bag", price_per_unit is 6.
+- transport_needed: true if the user says they need transport/delivery help. Otherwise false.
+- delivery_option:
+  - can_deliver if seller says they can deliver
+  - buyer_collects if seller says buyer must collect
+  - seller_delivers if seller says delivery included
+  - needs_transport if user needs transport
+  - will_collect if buyer says they will collect
+  - unknown if not mentioned
+- transport_note: short transport/delivery note from the message, or empty string
 - confidence: number from 0 to 1
 
 Important:
@@ -120,19 +149,20 @@ Important:
 - If message says "$6 per bag", price_per_unit is 6.
 - If message says "budget $25", treat price as 25.
 - If no price exists, price must be 0 and price_per_unit must be 0.
+- If no transport info exists, transport_needed false, delivery_option unknown, transport_note empty.
 
 Examples:
-Message: "Ndine 20 kgs dze beef ku Rimuka Kadoma for $80"
-JSON: {{"intent":"sell","commodity":"beef","quantity":20,"unit":"kg","location":"Rimuka Kadoma","price":80,"currency":"USD","price_per_unit":4,"confidence":0.95}}
+Message: "Ndine 20 kgs dze beef ku Rimuka Kadoma for $80 can deliver"
+JSON: {{"intent":"sell","commodity":"beef","quantity":20,"unit":"kg","location":"Rimuka Kadoma","price":80,"currency":"USD","price_per_unit":4,"transport_needed":false,"delivery_option":"can_deliver","transport_note":"seller can deliver","confidence":0.95}}
 
-Message: "I want 10 bags maize in Chegutu budget $60"
-JSON: {{"intent":"buy","commodity":"maize","quantity":10,"unit":"bags","location":"Chegutu","price":60,"currency":"USD","price_per_unit":6,"confidence":0.95}}
+Message: "I want 10 bags maize in Chegutu budget $60 need transport"
+JSON: {{"intent":"buy","commodity":"maize","quantity":10,"unit":"bags","location":"Chegutu","price":60,"currency":"USD","price_per_unit":6,"transport_needed":true,"delivery_option":"needs_transport","transport_note":"buyer needs transport","confidence":0.95}}
 
-Message: "Selling maize Chegutu $6 per bag"
-JSON: {{"intent":"sell","commodity":"maize","quantity":0,"unit":"bags","location":"Chegutu","price":0,"currency":"USD","price_per_unit":6,"confidence":0.9}}
+Message: "Selling maize Chegutu $6 per bag buyer collects"
+JSON: {{"intent":"sell","commodity":"maize","quantity":0,"unit":"bags","location":"Chegutu","price":0,"currency":"USD","price_per_unit":6,"transport_needed":false,"delivery_option":"buyer_collects","transport_note":"buyer collects","confidence":0.9}}
 
 Message: "Ngifuna 4 goats eKadoma"
-JSON: {{"intent":"buy","commodity":"goat","quantity":4,"unit":"","location":"Kadoma","price":0,"currency":"","price_per_unit":0,"confidence":0.9}}
+JSON: {{"intent":"buy","commodity":"goat","quantity":4,"unit":"","location":"Kadoma","price":0,"currency":"","price_per_unit":0,"transport_needed":false,"delivery_option":"unknown","transport_note":"","confidence":0.9}}
 
 Message:
 {message}
@@ -169,7 +199,7 @@ def safe_float(value, default=0):
         if number.is_integer():
             return int(number)
 
-        return number
+        return round(number, 2)
 
     except Exception:
         return default
@@ -203,6 +233,18 @@ def normalize_extracted_payload(extracted: dict):
     if price and quantity and not price_per_unit:
         price_per_unit = round(float(price) / float(quantity), 2)
 
+    delivery_option = str(extracted.get("delivery_option") or "unknown").lower().strip()
+
+    if delivery_option not in [
+        "can_deliver",
+        "buyer_collects",
+        "seller_delivers",
+        "needs_transport",
+        "will_collect",
+        "unknown",
+    ]:
+        delivery_option = "unknown"
+
     confidence = safe_float(extracted.get("confidence"), 0.7)
 
     if confidence < 0:
@@ -222,6 +264,9 @@ def normalize_extracted_payload(extracted: dict):
         "price": price if price else None,
         "currency": currency or None,
         "price_per_unit": price_per_unit if price_per_unit else None,
+        "transport_needed": bool(extracted.get("transport_needed") or False),
+        "delivery_option": delivery_option,
+        "transport_note": str(extracted.get("transport_note") or "").strip(),
         "confidence": confidence,
     }
 
@@ -255,6 +300,9 @@ def extract_market_data(message: str, reporter_phone: str | None = None):
     fallback["price"] = None
     fallback["currency"] = None
     fallback["price_per_unit"] = None
+    fallback["transport_needed"] = False
+    fallback["delivery_option"] = "unknown"
+    fallback["transport_note"] = ""
 
     print("Fallback Extracted:", fallback)
 

@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.routers import whatsapp
 from app.routers import dashboard
 from app.routers import cron
+from app.routers import admin_ai
 from app.db.supabase_client import supabase
 
 app = FastAPI(title="Agri Broker API")
@@ -10,6 +11,7 @@ app = FastAPI(title="Agri Broker API")
 app.include_router(whatsapp.router)
 app.include_router(dashboard.router)
 app.include_router(cron.router)
+app.include_router(admin_ai.router)
 
 
 @app.get("/")

@@ -55,6 +55,7 @@ from app.services.message_dedupe_service import (
     mark_message_processed,
 )
 from app.services.ai_assistant_service import generate_ai_assistant_reply
+from app.services.price_intelligence_service import get_price_guidance_for_listing
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -146,6 +147,35 @@ def format_price_line(listing: dict):
     return "\n".join(lines)
 
 
+def format_transport_line(listing: dict):
+    delivery_option = listing.get("delivery_option")
+    transport_needed = listing.get("transport_needed")
+    transport_note = listing.get("transport_note")
+
+    label_map = {
+        "can_deliver": "Seller can deliver",
+        "buyer_collects": "Buyer collects",
+        "seller_delivers": "Seller delivers",
+        "needs_transport": "Needs transport",
+        "will_collect": "Buyer will collect",
+        "unknown": "",
+        None: "",
+    }
+
+    label = label_map.get(delivery_option, "")
+
+    if transport_needed and not label:
+        label = "Needs transport"
+
+    if not label and not transport_note:
+        return ""
+
+    if transport_note:
+        return f"Transport: {label} — {transport_note}" if label else f"Transport: {transport_note}"
+
+    return f"Transport: {label}"
+
+
 def format_chat_link(phone: str):
     if not phone:
         return "Not available"
@@ -181,6 +211,7 @@ def show_main_menu(phone: str):
         ],
     )
 
+
 def show_ai_assistant_menu(phone: str, incoming_message: str):
     profile = get_profile(phone) or {}
 
@@ -202,6 +233,7 @@ def show_ai_assistant_menu(phone: str, incoming_message: str):
             {"id": "menu_deals", "title": "My Deals"},
         ],
     )
+
 
 def extract_incoming_message(message_data: dict):
     if "text" in message_data:
@@ -263,9 +295,173 @@ def normalize_command(message: str):
 
         "confirm_listing": "confirm_listing",
         "edit_listing": "edit_listing",
+
+        "transport_can_deliver": "transport_can_deliver",
+        "transport_buyer_collects": "transport_buyer_collects",
+        "transport_need": "transport_need",
+        "transport_will_collect": "transport_will_collect",
+        "transport_skip": "transport_skip",
     }
 
     return command_map.get(message, message)
+
+
+def get_missing_listing_fields(listing: dict):
+    missing = []
+
+    commodity = listing.get("commodity")
+    quantity = listing.get("quantity")
+    location = listing.get("location")
+
+    if not commodity or str(commodity).strip() in ["", "unknown", "none"]:
+        missing.append("commodity")
+
+    try:
+        quantity_number = float(quantity or 0)
+    except Exception:
+        quantity_number = 0
+
+    if quantity_number <= 0:
+        missing.append("quantity")
+
+    if not location or str(location).strip() in ["", "unknown", "none"]:
+        missing.append("location")
+
+    return missing
+
+
+def get_missing_field_question(field: str, listing: dict):
+    intent = listing.get("intent") or "sell"
+
+    if field == "commodity":
+        if intent == "buy":
+            return "What product do you want to buy? Example: beef, maize, goats, potatoes."
+        return "What product are you selling? Example: beef, maize, goats, potatoes."
+
+    if field == "quantity":
+        return "What quantity? Please include unit if possible. Example: 20 kg, 10 bags, 4 goats."
+
+    if field == "location":
+        return "Where is it located? Example: Rimuka Kadoma, Chegutu, Harare."
+
+    return "Please send the missing detail."
+
+
+def update_listing_with_missing_answer(pending_listing: dict, field: str, answer: str, phone: str):
+    extracted = extract_market_data(answer, reporter_phone=phone)
+
+    if field == "commodity":
+        commodity = extracted.get("commodity") or answer.strip().lower()
+        pending_listing["commodity"] = commodity
+
+    elif field == "quantity":
+        quantity = extracted.get("quantity")
+        unit = extracted.get("unit")
+
+        if quantity:
+            pending_listing["quantity"] = quantity
+
+        if unit:
+            pending_listing["unit"] = unit
+            pending_listing["raw_quantity_text"] = f"{quantity} {unit}".strip()
+
+        if not quantity:
+            try:
+                pending_listing["quantity"] = float(answer.strip())
+            except Exception:
+                pass
+
+    elif field == "location":
+        location = extracted.get("location") or answer.strip()
+        pending_listing["location"] = location
+
+    price = extracted.get("price")
+    price_per_unit = extracted.get("price_per_unit")
+    currency = extracted.get("currency")
+
+    if price and not pending_listing.get("price"):
+        pending_listing["price"] = price
+
+    if price_per_unit and not pending_listing.get("price_per_unit"):
+        pending_listing["price_per_unit"] = price_per_unit
+
+    if currency and not pending_listing.get("currency"):
+        pending_listing["currency"] = currency
+
+    delivery_option = extracted.get("delivery_option")
+    transport_note = extracted.get("transport_note")
+
+    if delivery_option and delivery_option != "unknown":
+        pending_listing["delivery_option"] = delivery_option
+
+    if transport_note:
+        pending_listing["transport_note"] = transport_note
+
+    if extracted.get("transport_needed"):
+        pending_listing["transport_needed"] = True
+
+    return pending_listing
+
+
+def should_ask_transport(listing: dict):
+    delivery_option = listing.get("delivery_option")
+
+    return not delivery_option or delivery_option == "unknown"
+
+
+def send_transport_question(phone: str, listing: dict):
+    intent = listing.get("intent")
+
+    if intent == "buy":
+        send_whatsapp_buttons(
+            phone,
+            "Transport/delivery question:\n\nHow will you handle collection or delivery?",
+            [
+                {"id": "transport_need", "title": "Need Transport"},
+                {"id": "transport_will_collect", "title": "Will Collect"},
+                {"id": "transport_skip", "title": "Skip"},
+            ],
+        )
+        return
+
+    send_whatsapp_buttons(
+        phone,
+        "Transport/delivery question:\n\nCan you deliver, or should the buyer collect?",
+        [
+            {"id": "transport_can_deliver", "title": "Can Deliver"},
+            {"id": "transport_buyer_collects", "title": "Buyer Collects"},
+            {"id": "transport_skip", "title": "Skip"},
+        ],
+    )
+
+
+def apply_transport_answer(listing: dict, incoming_message: str):
+    if incoming_message == "transport_can_deliver":
+        listing["delivery_option"] = "can_deliver"
+        listing["transport_needed"] = False
+        listing["transport_note"] = "Seller can deliver"
+
+    elif incoming_message == "transport_buyer_collects":
+        listing["delivery_option"] = "buyer_collects"
+        listing["transport_needed"] = False
+        listing["transport_note"] = "Buyer collects"
+
+    elif incoming_message == "transport_need":
+        listing["delivery_option"] = "needs_transport"
+        listing["transport_needed"] = True
+        listing["transport_note"] = "Buyer needs transport"
+
+    elif incoming_message == "transport_will_collect":
+        listing["delivery_option"] = "will_collect"
+        listing["transport_needed"] = False
+        listing["transport_note"] = "Buyer will collect"
+
+    elif incoming_message == "transport_skip":
+        listing["delivery_option"] = "unknown"
+        listing["transport_needed"] = False
+        listing["transport_note"] = ""
+
+    return listing
 
 
 def build_listing_confirmation_message(extracted: dict):
@@ -281,10 +477,19 @@ def build_listing_confirmation_message(extracted: dict):
         confidence_percent = 0
 
     price_text = format_price_line(extracted)
-    price_block = ""
+    transport_text = format_transport_line(extracted)
+    price_guidance = get_price_guidance_for_listing(extracted)
+
+    optional_blocks = ""
 
     if price_text:
-        price_block = f"{price_text}\n"
+        optional_blocks += f"{price_text}\n"
+
+    if transport_text:
+        optional_blocks += f"{transport_text}\n"
+
+    if price_guidance:
+        optional_blocks += f"\n{price_guidance}\n"
 
     return (
         "Please confirm what I understood:\n\n"
@@ -292,7 +497,7 @@ def build_listing_confirmation_message(extracted: dict):
         f"Commodity: {commodity}\n"
         f"Quantity: {quantity}\n"
         f"Location: {location}\n"
-        f"{price_block}"
+        f"{optional_blocks}"
         f"AI Confidence: {confidence_percent}%\n\n"
         "Is this correct?"
     )
@@ -313,10 +518,15 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
     match_reasons = ", ".join(match_data.get("_match_reasons", []))
 
     price_text = format_price_line(listing)
-    price_extra = ""
+    transport_text = format_transport_line(listing)
+
+    extra = ""
 
     if price_text:
-        price_extra = f"\n\n{price_text}"
+        extra += f"\n\n{price_text}"
+
+    if transport_text:
+        extra += f"\n{transport_text}"
 
     buyer_message = translate(
         buyer_phone,
@@ -330,7 +540,7 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
         match_reasons=match_reasons,
     )
 
-    buyer_message = buyer_message + price_extra
+    buyer_message = buyer_message + extra
 
     send_whatsapp_buttons(
         buyer_phone,
@@ -410,6 +620,7 @@ def build_my_deals_message(phone: str):
         quantity = format_quantity(listing)
         location = format_location(listing)
         price_text = format_price_line(listing)
+        transport_text = format_transport_line(listing)
 
         deal_text = (
             f"{index}. {commodity}\n"
@@ -420,6 +631,9 @@ def build_my_deals_message(phone: str):
 
         if price_text:
             deal_text += f"{price_text}\n"
+
+        if transport_text:
+            deal_text += f"{transport_text}\n"
 
         deal_text += f"Status: {status}"
 
@@ -442,11 +656,15 @@ def build_request_card(listing: dict):
     quantity = format_quantity(listing)
     location = format_location(listing)
     price_text = format_price_line(listing)
+    transport_text = format_transport_line(listing)
 
-    price_block = ""
+    optional_block = ""
 
     if price_text:
-        price_block = f"{price_text}\n"
+        optional_block += f"{price_text}\n"
+
+    if transport_text:
+        optional_block += f"{transport_text}\n"
 
     return (
         f"📌 Active Request\n\n"
@@ -454,7 +672,7 @@ def build_request_card(listing: dict):
         f"Commodity: {commodity}\n"
         f"Quantity: {quantity}\n"
         f"Location: {location}\n"
-        f"{price_block}\n"
+        f"{optional_block}\n"
         f"What do you want to do with this request?"
     )
 
@@ -548,6 +766,63 @@ def handle_request_action(phone: str, incoming_message: str):
         return True
 
     return False
+
+
+def prepare_listing_for_confirmation(sender_phone: str, listing: dict, original_step: str):
+    missing_fields = get_missing_listing_fields(listing)
+
+    if missing_fields:
+        set_session(
+            sender_phone,
+            "collect_missing_listing_field",
+            {
+                "pending_listing": listing,
+                "missing_fields": missing_fields,
+                "original_step": original_step,
+            },
+        )
+
+        send_whatsapp_message(
+            sender_phone,
+            get_missing_field_question(missing_fields[0], listing),
+        )
+
+        return {
+            "status": "missing_info_requested",
+            "missing_field": missing_fields[0],
+        }
+
+    if should_ask_transport(listing):
+        set_session(
+            sender_phone,
+            "transport_question",
+            {
+                "pending_listing": listing,
+                "original_step": original_step,
+            },
+        )
+
+        send_transport_question(sender_phone, listing)
+
+        return {
+            "status": "transport_question_sent",
+        }
+
+    set_session(
+        sender_phone,
+        "confirm_listing",
+        {
+            "pending_listing": listing,
+            "original_step": original_step,
+        },
+    )
+
+    send_listing_confirmation(sender_phone, listing)
+
+    return {
+        "status": "listing_confirmation_sent",
+        "extracted": listing,
+    }
 
 
 def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
@@ -733,6 +1008,80 @@ async def receive_message(request: Request):
 
         session = get_session(sender_phone)
 
+        if session and session.get("current_step") == "collect_missing_listing_field":
+            temp_data = session.get("temp_data") or {}
+            pending_listing = temp_data.get("pending_listing") or {}
+            missing_fields = temp_data.get("missing_fields") or []
+            original_step = temp_data.get("original_step")
+
+            if not missing_fields:
+                return prepare_listing_for_confirmation(
+                    sender_phone,
+                    pending_listing,
+                    original_step,
+                )
+
+            current_field = missing_fields[0]
+
+            pending_listing = update_listing_with_missing_answer(
+                pending_listing=pending_listing,
+                field=current_field,
+                answer=incoming_message,
+                phone=sender_phone,
+            )
+
+            missing_fields = get_missing_listing_fields(pending_listing)
+
+            if missing_fields:
+                set_session(
+                    sender_phone,
+                    "collect_missing_listing_field",
+                    {
+                        "pending_listing": pending_listing,
+                        "missing_fields": missing_fields,
+                        "original_step": original_step,
+                    },
+                )
+
+                send_whatsapp_message(
+                    sender_phone,
+                    get_missing_field_question(missing_fields[0], pending_listing),
+                )
+
+                return {
+                    "status": "missing_info_requested",
+                    "missing_field": missing_fields[0],
+                }
+
+            return prepare_listing_for_confirmation(
+                sender_phone,
+                pending_listing,
+                original_step,
+            )
+
+        if session and session.get("current_step") == "transport_question":
+            temp_data = session.get("temp_data") or {}
+            pending_listing = temp_data.get("pending_listing") or {}
+            original_step = temp_data.get("original_step")
+
+            pending_listing = apply_transport_answer(
+                pending_listing,
+                incoming_message,
+            )
+
+            set_session(
+                sender_phone,
+                "confirm_listing",
+                {
+                    "pending_listing": pending_listing,
+                    "original_step": original_step,
+                },
+            )
+
+            send_listing_confirmation(sender_phone, pending_listing)
+
+            return {"status": "listing_confirmation_sent_after_transport"}
+
         if session and session.get("current_step") == "confirm_listing":
             temp_data = session.get("temp_data") or {}
             pending_listing = temp_data.get("pending_listing") or {}
@@ -747,14 +1096,14 @@ async def receive_message(request: Request):
                     set_session(sender_phone, "create_buy_request", {})
                     send_whatsapp_message(
                         sender_phone,
-                        "Okay, please send the buy request again.\n\nExample: 15 kg beef in Rimuka, Kadoma",
+                        "Okay, please send the buy request again.\n\nExample: 15 kg beef in Rimuka, Kadoma budget $60",
                     )
                     return {"status": "edit_buy_listing"}
 
                 set_session(sender_phone, "create_sell_listing", {})
                 send_whatsapp_message(
                     sender_phone,
-                    "Okay, please send the sell request again.\n\nExample: 20 kg beef in Rimuka, Kadoma",
+                    "Okay, please send the sell request again.\n\nExample: 20 kg beef in Rimuka, Kadoma for $80",
                 )
                 return {"status": "edit_sell_listing"}
 
@@ -952,9 +1301,13 @@ async def receive_message(request: Request):
             )
 
             price_text = format_price_line(listing)
+            transport_text = format_transport_line(listing)
 
             if price_text:
                 seller_prompt += f"\n\n{price_text}"
+
+            if transport_text:
+                seller_prompt += f"\n{transport_text}"
 
             send_whatsapp_buttons(
                 seller_phone,
@@ -988,10 +1341,10 @@ async def receive_message(request: Request):
         if not forced_intent:
             show_ai_assistant_menu(sender_phone, incoming_message)
 
-        return {
-        "status": "ai_assistant_reply_sent",
-        "message": incoming_message,
-    }
+            return {
+                "status": "ai_assistant_reply_sent",
+                "message": incoming_message,
+            }
 
         today_count = count_today_listings_by_seller(sender_phone)
 
@@ -1014,21 +1367,11 @@ async def receive_message(request: Request):
         print("\n========== EXTRACTED MARKET DATA ==========")
         print(extracted)
 
-        set_session(
+        return prepare_listing_for_confirmation(
             sender_phone,
-            "confirm_listing",
-            {
-                "pending_listing": extracted,
-                "original_step": original_step,
-            },
+            extracted,
+            original_step,
         )
-
-        send_listing_confirmation(sender_phone, extracted)
-
-        return {
-            "status": "listing_confirmation_sent",
-            "extracted": extracted,
-        }
 
     except Exception as e:
         print("Webhook error:", e)

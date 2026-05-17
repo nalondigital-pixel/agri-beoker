@@ -17,10 +17,15 @@ def save_listing(data):
         "seller_phone": data.get("seller_phone"),
         "status": "active",
 
-        # Price intelligence fields
+        # Price intelligence
         "price": data.get("price"),
         "currency": data.get("currency") or "USD",
         "price_per_unit": data.get("price_per_unit"),
+
+        # Transport intelligence
+        "transport_needed": data.get("transport_needed") or False,
+        "delivery_option": data.get("delivery_option"),
+        "transport_note": data.get("transport_note"),
     }).execute()
 
     if response.data:
@@ -75,6 +80,41 @@ def get_active_listings_by_phone(phone: str, limit: int = 5):
     )
 
     return response.data or []
+
+
+def get_recent_price_comparables(
+    commodity: str,
+    location: str | None = None,
+    limit: int = 50,
+):
+    if not commodity:
+        return []
+
+    query = (
+        supabase.table("listings")
+        .select("id, commodity, location, intent, price, currency, price_per_unit, unit, created_at, status")
+        .eq("commodity", commodity)
+        .eq("intent", "sell")
+        .not_.is_("price_per_unit", "null")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+
+    response = query.execute()
+    rows = response.data or []
+
+    if location:
+        location_lower = str(location).lower()
+        same_location = [
+            row for row in rows
+            if location_lower in str(row.get("location") or "").lower()
+            or str(row.get("location") or "").lower() in location_lower
+        ]
+
+        if len(same_location) >= 3:
+            return same_location
+
+    return rows
 
 
 def mark_listing_matched(listing_id):
