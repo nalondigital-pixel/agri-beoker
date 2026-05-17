@@ -6,13 +6,13 @@ from app.services.profile_service import reward_successful_deal
 from app.services.language_service import translate
 
 
-def schedule_deal_feedback(deal_id: str):
-    due_at = datetime.now(timezone.utc) + timedelta(hours=24)
+def schedule_deal_feedback(deal_id):
+    feedback_due_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
     response = (
         supabase.table("deals")
         .update({
-            "feedback_due_at": due_at.isoformat(),
+            "feedback_due_at": feedback_due_at.isoformat(),
             "feedback_sent": False,
         })
         .eq("id", deal_id)
@@ -22,14 +22,7 @@ def schedule_deal_feedback(deal_id: str):
     return response.data
 
 
-def start_feedback_session(phone: str, deal_id: str, role: str):
-    set_session(phone, "deal_feedback", {
-        "deal_id": deal_id,
-        "role": role,
-    })
-
-
-def get_deal(deal_id: str):
+def get_deal(deal_id):
     response = (
         supabase.table("deals")
         .select("*")
@@ -44,18 +37,25 @@ def get_deal(deal_id: str):
     return None
 
 
-def create_untrusted_case(deal_id, reporter_phone, reported_phone, reason):
-    response = (
-        supabase.table("untrusted_queue")
-        .insert({
+def start_feedback_session(phone: str, deal_id, role: str):
+    set_session(
+        phone,
+        "deal_feedback",
+        {
             "deal_id": deal_id,
-            "reporter_phone": reporter_phone,
-            "reported_phone": reported_phone,
-            "reason": reason,
-            "status": "open",
-        })
-        .execute()
+            "role": role,
+        },
     )
+
+
+def create_untrusted_case(deal, reporter_phone: str, reported_phone: str, reason: str):
+    response = supabase.table("untrusted_queue").insert({
+        "deal_id": deal.get("id"),
+        "reporter_phone": reporter_phone,
+        "reported_phone": reported_phone,
+        "reason": reason,
+        "status": "pending",
+    }).execute()
 
     if response.data:
         return response.data[0]
@@ -63,20 +63,60 @@ def create_untrusted_case(deal_id, reporter_phone, reported_phone, reason):
     return None
 
 
+def update_feedback_field(deal_id, role: str, value: str):
+    now = datetime.now(timezone.utc).isoformat()
+
+    if role == "buyer":
+        payload = {
+            "buyer_feedback": value,
+            "buyer_feedback_at": now,
+        }
+    else:
+        payload = {
+            "seller_feedback": value,
+            "seller_feedback_at": now,
+        }
+
+    response = (
+        supabase.table("deals")
+        .update(payload)
+        .eq("id", deal_id)
+        .execute()
+    )
+
+    return response.data
+
+
+def both_feedback_successful(deal_id):
+    deal = get_deal(deal_id)
+
+    if not deal:
+        return False
+
+    return (
+        deal.get("buyer_feedback") == "successful"
+        and deal.get("seller_feedback") == "successful"
+    )
+
+
 def handle_feedback_response(phone: str, message: str):
     session = get_session(phone)
 
-    if not session or session.get("current_step") != "deal_feedback":
+    if not session:
+        return None
+
+    if session.get("current_step") != "deal_feedback":
         return None
 
     temp_data = session.get("temp_data") or {}
     deal_id = temp_data.get("deal_id")
     role = temp_data.get("role")
 
-    if message.strip() not in ["1", "2"]:
+    if not deal_id or role not in ["buyer", "seller"]:
+        clear_session(phone)
         return {
             "handled": True,
-            "reply": translate(phone, "feedback_invalid"),
+            "reply": translate(phone, "feedback_deal_not_found"),
         }
 
     deal = get_deal(deal_id)
@@ -88,51 +128,63 @@ def handle_feedback_response(phone: str, message: str):
             "reply": translate(phone, "feedback_deal_not_found"),
         }
 
-    now = datetime.now(timezone.utc).isoformat()
+    normalized = str(message).strip().lower()
 
-    if role == "buyer":
-        feedback_field = "buyer_feedback"
-        feedback_time_field = "buyer_feedback_at"
-        other_phone = deal.get("seller_phone")
-    else:
-        feedback_field = "seller_feedback"
-        feedback_time_field = "seller_feedback_at"
-        other_phone = deal.get("buyer_phone")
+    if normalized not in ["1", "2", "feedback_success", "feedback_failed"]:
+        return {
+            "handled": True,
+            "reply": translate(phone, "feedback_invalid"),
+        }
 
-    if message.strip() == "1":
-        supabase.table("deals").update({
-            feedback_field: "successful",
-            feedback_time_field: now,
-        }).eq("id", deal_id).execute()
-
-        reward_successful_deal(phone)
-
-        if other_phone:
-            reward_successful_deal(other_phone)
-
+    if normalized in ["1", "feedback_success"]:
+        update_feedback_field(deal_id, role, "successful")
         clear_session(phone)
+
+        refreshed_deal = get_deal(deal_id)
+
+        if (
+            refreshed_deal
+            and refreshed_deal.get("buyer_feedback") == "successful"
+            and refreshed_deal.get("seller_feedback") == "successful"
+        ):
+            buyer_phone = refreshed_deal.get("buyer_phone")
+            seller_phone = refreshed_deal.get("seller_phone")
+
+            if buyer_phone:
+                reward_successful_deal(buyer_phone)
+
+            if seller_phone:
+                reward_successful_deal(seller_phone)
 
         return {
             "handled": True,
             "reply": translate(phone, "feedback_success"),
         }
 
-    if message.strip() == "2":
-        supabase.table("deals").update({
-            feedback_field: "flake_reported",
-            feedback_time_field: now,
-        }).eq("id", deal_id).execute()
+    if normalized in ["2", "feedback_failed"]:
+        update_feedback_field(deal_id, role, "problem")
+        clear_session(phone)
+
+        if role == "buyer":
+            reported_phone = deal.get("seller_phone")
+            reason = "Buyer reported a problem after contact sharing."
+        else:
+            reported_phone = deal.get("buyer_phone")
+            reason = "Seller reported a problem after contact sharing."
 
         create_untrusted_case(
-            deal_id=deal_id,
+            deal=deal,
             reporter_phone=phone,
-            reported_phone=other_phone,
-            reason="User reported that the other person did not come.",
+            reported_phone=reported_phone,
+            reason=reason,
         )
-
-        clear_session(phone)
 
         return {
             "handled": True,
             "reply": translate(phone, "feedback_reported"),
         }
+
+    return {
+        "handled": True,
+        "reply": translate(phone, "feedback_invalid"),
+    }

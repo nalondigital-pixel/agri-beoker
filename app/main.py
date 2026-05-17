@@ -2,8 +2,8 @@ from fastapi import FastAPI
 
 from app.routers import whatsapp
 from app.routers import dashboard
-from app.db.supabase_client import supabase
 from app.routers import cron
+from app.db.supabase_client import supabase
 
 app = FastAPI(title="Agri Broker API")
 
@@ -14,7 +14,10 @@ app.include_router(cron.router)
 
 @app.get("/")
 def root():
-    return {"status": "running", "message": "Agri Broker API is live"}
+    return {
+        "status": "running",
+        "message": "Agri Broker API is live",
+    }
 
 
 @app.get("/debug/buyers")

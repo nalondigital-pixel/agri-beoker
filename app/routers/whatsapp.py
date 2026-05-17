@@ -10,6 +10,8 @@ from app.services.db_service import (
     save_listing,
     get_listing_by_id,
     get_active_opposite_listings,
+    get_active_listings_by_phone,
+    close_listing,
 )
 from app.services.matching_service import (
     find_matches,
@@ -24,6 +26,7 @@ from app.services.deal_service import (
     create_deal_between_requests,
     find_pending_deal_by_buyer_phone,
     find_pending_seller_decision,
+    get_deals_by_phone,
     update_deal_status,
     update_buyer_decision,
     update_seller_decision,
@@ -97,7 +100,6 @@ def format_quantity(listing: dict):
 
 def format_location(listing: dict):
     location = listing.get("location") or "Unknown location"
-
     return str(location).title()
 
 
@@ -106,8 +108,22 @@ def format_chat_link(phone: str):
         return "Not available"
 
     clean_phone = str(phone).replace("+", "").replace(" ", "").strip()
-
     return f"https://wa.me/{clean_phone}"
+
+
+def format_deal_status(status: str):
+    status_map = {
+        "buyer_alerted": "Waiting for buyer response",
+        "buyer_interested": "Waiting for seller approval",
+        "confirmed": "Confirmed — contact shared",
+        "seller_waiting": "Seller waiting for better offer",
+        "buyer_declined": "Buyer declined",
+        "cancelled": "Cancelled",
+        "fulfilled": "Fulfilled",
+        "closed": "Closed",
+    }
+
+    return status_map.get(status, status or "Unknown")
 
 
 def show_main_menu(phone: str):
@@ -156,6 +172,12 @@ def extract_incoming_message(message_data: dict):
 
 def normalize_command(message: str):
     message = message.strip().lower()
+
+    if message.startswith("cancel_request_"):
+        return message
+
+    if message.startswith("fulfill_request_"):
+        return message
 
     command_map = {
         "buyer_interested": "1",
@@ -249,6 +271,156 @@ def notify_active_request_matches(new_listing):
     return sent_count
 
 
+def build_my_deals_message(phone: str):
+    deals = get_deals_by_phone(phone)
+
+    if not deals:
+        return (
+            "📋 My Deals\n\n"
+            "You do not have any deals yet.\n\n"
+            "Use Buy or Sell from the menu to create a request."
+        )
+
+    message_parts = ["📋 My Deals\n"]
+
+    for index, deal in enumerate(deals, start=1):
+        listing = deal.get("listing") or {}
+
+        role = "Buyer" if deal.get("buyer_phone") == phone else "Seller"
+        status = format_deal_status(deal.get("status"))
+
+        commodity = listing.get("commodity") or "Unknown commodity"
+        quantity = format_quantity(listing)
+        location = format_location(listing)
+
+        deal_text = (
+            f"{index}. {commodity}\n"
+            f"Role: {role}\n"
+            f"Quantity: {quantity}\n"
+            f"Location: {location}\n"
+            f"Status: {status}"
+        )
+
+        if deal.get("status") == "confirmed":
+            if role == "Buyer":
+                seller_phone = deal.get("seller_phone")
+                deal_text += f"\nChat with seller: {format_chat_link(seller_phone)}"
+            else:
+                buyer_phone = deal.get("buyer_phone")
+                deal_text += f"\nChat with buyer: {format_chat_link(buyer_phone)}"
+
+        message_parts.append(deal_text)
+
+    return "\n\n".join(message_parts)
+
+
+def build_request_card(listing: dict):
+    intent = (listing.get("intent") or "request").upper()
+    commodity = listing.get("commodity") or "Unknown commodity"
+    quantity = format_quantity(listing)
+    location = format_location(listing)
+
+    return (
+        f"📌 Active Request\n\n"
+        f"Type: {intent}\n"
+        f"Commodity: {commodity}\n"
+        f"Quantity: {quantity}\n"
+        f"Location: {location}\n\n"
+        f"What do you want to do with this request?"
+    )
+
+
+def send_active_request_buttons(phone: str):
+    active_requests = get_active_listings_by_phone(phone)
+
+    if not active_requests:
+        send_whatsapp_message(
+            phone,
+            "You have no active requests right now.",
+        )
+        return 0
+
+    send_whatsapp_message(
+        phone,
+        f"You have {len(active_requests)} active request(s).",
+    )
+
+    sent_count = 0
+
+    for request_item in active_requests:
+        listing_id = request_item.get("id")
+
+        if not listing_id:
+            continue
+
+        send_whatsapp_buttons(
+            phone,
+            build_request_card(request_item),
+            [
+                {
+                    "id": f"cancel_request_{listing_id}",
+                    "title": "Cancel",
+                },
+                {
+                    "id": f"fulfill_request_{listing_id}",
+                    "title": "Done",
+                },
+            ],
+        )
+
+        sent_count += 1
+
+    return sent_count
+
+
+def handle_request_action(phone: str, incoming_message: str):
+    if incoming_message.startswith("cancel_request_"):
+        listing_id = incoming_message.replace("cancel_request_", "").strip()
+
+        updated = close_listing(
+            listing_id=listing_id,
+            phone=phone,
+            status="cancelled",
+        )
+
+        if updated:
+            send_whatsapp_message(
+                phone,
+                "✅ Request cancelled. It will no longer be matched.",
+            )
+            return True
+
+        send_whatsapp_message(
+            phone,
+            "Could not cancel this request. It may already be closed.",
+        )
+        return True
+
+    if incoming_message.startswith("fulfill_request_"):
+        listing_id = incoming_message.replace("fulfill_request_", "").strip()
+
+        updated = close_listing(
+            listing_id=listing_id,
+            phone=phone,
+            status="fulfilled",
+        )
+
+        if updated:
+            send_whatsapp_message(
+                phone,
+                "✅ Request marked as done. It will no longer be matched.",
+            )
+            return True
+
+        send_whatsapp_message(
+            phone,
+            "Could not update this request. It may already be closed.",
+        )
+        return True
+
+    return False
+
+
 @router.get("/")
 def verify_webhook(request: Request):
     params = request.query_params
@@ -304,6 +476,9 @@ async def receive_message(request: Request):
 
         if is_blocked_user(sender_phone):
             return {"status": "blocked_user_ignored"}
+
+        if handle_request_action(sender_phone, incoming_message):
+            return {"status": "request_action_handled"}
 
         feedback_result = handle_feedback_response(sender_phone, incoming_message)
 
@@ -370,10 +545,15 @@ async def receive_message(request: Request):
         if incoming_message == "menu_deals":
             send_whatsapp_message(
                 sender_phone,
-                translate(sender_phone, "deals_coming"),
+                build_my_deals_message(sender_phone),
             )
 
-            return {"status": "deals_menu"}
+            active_count = send_active_request_buttons(sender_phone)
+
+            return {
+                "status": "my_deals_and_requests_shown",
+                "active_requests": active_count,
+            }
 
         session = get_session(sender_phone)
 

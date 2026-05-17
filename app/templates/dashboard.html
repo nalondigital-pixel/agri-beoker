@@ -2,72 +2,103 @@
 <html>
 <head>
     <title>Agri Broker Dashboard</title>
-    <style>
-        * { box-sizing: border-box; }
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <style>
         body {
             font-family: Arial, sans-serif;
+            background: #f4f7f3;
             margin: 0;
-            background: #f3f5f2;
             color: #1f2933;
         }
 
         header {
-            background: #1f4d2b;
+            background: #1f7a3f;
             color: white;
-            padding: 22px 32px;
+            padding: 18px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        header h1 { margin: 0; font-size: 26px; }
-        header p { margin: 6px 0 0; color: #d7eadc; }
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
 
-        main { padding: 28px 32px; }
+        header a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .container {
+            padding: 24px;
+        }
 
         .stats {
             display: grid;
-            grid-template-columns: repeat(6, minmax(140px, 1fr));
-            gap: 14px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
         }
 
-        .card {
+        .stat-card {
             background: white;
-            padding: 18px;
             border-radius: 12px;
-            border: 1px solid #ddd;
+            padding: 18px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
         }
 
-        .card span { color: #667085; font-size: 13px; }
-        .card strong {
-            display: block;
-            font-size: 28px;
-            margin-top: 6px;
-            color: #1f4d2b;
+        .stat-card h3 {
+            margin: 0;
+            font-size: 13px;
+            color: #667085;
+            text-transform: uppercase;
         }
 
-        section { margin-bottom: 36px; }
-        h2 { margin-bottom: 10px; color: #243b2a; }
+        .stat-card p {
+            margin: 8px 0 0;
+            font-size: 30px;
+            font-weight: bold;
+            color: #1f7a3f;
+        }
+
+        section {
+            background: white;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 28px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        h2 {
+            color: #1f7a3f;
+            margin-top: 0;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid #ddd;
+            min-width: 900px;
         }
 
         th, td {
-            padding: 11px;
-            border-bottom: 1px solid #eee;
             text-align: left;
-            font-size: 14px;
+            padding: 10px;
+            border-bottom: 1px solid #edf0ed;
             vertical-align: top;
+            font-size: 13px;
         }
 
         th {
-            background: #e6f1e8;
-            color: #1f4d2b;
+            background: #f0f7ef;
+            font-size: 12px;
+            text-transform: uppercase;
         }
 
         .badge {
@@ -76,304 +107,341 @@
             border-radius: 999px;
             font-size: 12px;
             font-weight: bold;
+            background: #eef6ee;
+            color: #1f7a3f;
         }
 
-        .verified { background: #dcfce7; color: #166534; }
-        .unverified { background: #f3f4f6; color: #6b7280; }
-        .confirmed { background: #dcfce7; color: #166534; }
-        .pending { background: #fef3c7; color: #92400e; }
-        .open { background: #fee2e2; color: #991b1b; }
-
-        .empty {
-            background: white;
-            padding: 16px;
-            border-radius: 12px;
-            border: 1px solid #ddd;
-            color: #777;
+        .badge-warning {
+            background: #fff4d6;
+            color: #8a5a00;
         }
 
-        .small {
+        .badge-danger {
+            background: #ffe4e4;
+            color: #b42318;
+        }
+
+        .phone {
+            font-family: Consolas, monospace;
             font-size: 12px;
-            color: #667085;
-            max-width: 260px;
-            word-break: break-word;
         }
 
         button {
-            padding: 6px 10px;
             border: none;
-            border-radius: 6px;
+            padding: 7px 10px;
+            border-radius: 7px;
             cursor: pointer;
-            background: #1f4d2b;
-            color: white;
+            font-weight: bold;
+            font-size: 12px;
             margin: 2px;
         }
 
-        .danger { background: #991b1b; }
-        .warning { background: #92400e; }
-
-        input {
-            padding: 6px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            width: 120px;
+        .btn-green {
+            background: #1f7a3f;
+            color: white;
         }
 
-        form { margin: 0; }
+        .btn-yellow {
+            background: #fdb022;
+            color: #1f2933;
+        }
 
-        @media (max-width: 900px) {
-            .stats { grid-template-columns: repeat(2, 1fr); }
-            main { padding: 18px; }
-            table {
-                display: block;
-                overflow-x: auto;
-                white-space: nowrap;
-            }
+        .btn-red {
+            background: #d92d20;
+            color: white;
+        }
+
+        .empty {
+            color: #667085;
+            font-style: italic;
         }
     </style>
 </head>
 
 <body>
-
 <header>
     <h1>Agri Broker Dashboard</h1>
-    <p>Marketplace operations, trust, deals, learning, and moderation</p>
+    <a href="/dashboard/logout">Logout</a>
 </header>
 
-<main>
+<div class="container">
 
     <div class="stats">
-        <div class="card"><span>Listings</span><strong>{{ listings|length }}</strong></div>
-        <div class="card"><span>Buyers</span><strong>{{ buyers|length }}</strong></div>
-        <div class="card"><span>Deals</span><strong>{{ deals|length }}</strong></div>
-        <div class="card"><span>Blocked</span><strong>{{ blocked_users|length }}</strong></div>
-        <div class="card"><span>Fraud Reports</span><strong>{{ fraud_reports|length }}</strong></div>
-        <div class="card"><span>Learning Queue</span><strong>{{ unknown_terms|length }}</strong></div>
+        <div class="stat-card">
+            <h3>Total Requests</h3>
+            <p>{{ stats.total_requests }}</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Active Requests</h3>
+            <p>{{ stats.active_requests }}</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Closed Requests</h3>
+            <p>{{ stats.closed_requests }}</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Deals</h3>
+            <p>{{ stats.deals }}</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Users</h3>
+            <p>{{ stats.users }}</p>
+        </div>
+
+        <div class="stat-card">
+            <h3>Untrusted Cases</h3>
+            <p>{{ stats.untrusted_cases }}</p>
+        </div>
     </div>
 
     <section>
-        <h2>Recent Listings</h2>
-        {% if listings %}
-        <table>
-            <tr>
-                <th>Commodity</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-                <th>Location</th>
-                <th>Intent</th>
-                <th>Seller</th>
-                <th>Raw Message</th>
-                <th>Created</th>
-            </tr>
-            {% for item in listings %}
-            <tr>
-                <td>{{ item.commodity }}</td>
-                <td>{{ item.quantity }}</td>
-                <td>{{ item.unit }}</td>
-                <td>{{ item.location }}</td>
-                <td>{{ item.intent }}</td>
-                <td>{{ item.seller_phone }}</td>
-                <td class="small">{{ item.raw_message }}</td>
-                <td>{{ item.created_at }}</td>
-            </tr>
-            {% endfor %}
-        </table>
+        <h2>📌 Active Requests</h2>
+
+        {% if active_requests %}
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Intent</th>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                    <th>Location</th>
+                    <th>User Phone</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+
+                {% for item in active_requests %}
+                <tr>
+                    <td>{{ item.get("intent", "") }}</td>
+                    <td>{{ item.get("commodity", "") }}</td>
+                    <td>{{ item.get("quantity", "") }}</td>
+                    <td>{{ item.get("unit", "") }}</td>
+                    <td>{{ item.get("location", "") }}</td>
+                    <td class="phone">{{ item.get("seller_phone", "") }}</td>
+                    <td><span class="badge">{{ item.get("status", "") }}</span></td>
+                    <td>
+                        <form method="post" action="/dashboard/requests/close" style="display:inline;">
+                            <input type="hidden" name="listing_id" value="{{ item.get('id', '') }}">
+                            <input type="hidden" name="status" value="fulfilled">
+                            <button class="btn-green" type="submit">Fulfilled</button>
+                        </form>
+
+                        <form method="post" action="/dashboard/requests/close" style="display:inline;">
+                            <input type="hidden" name="listing_id" value="{{ item.get('id', '') }}">
+                            <input type="hidden" name="status" value="cancelled">
+                            <button class="btn-yellow" type="submit">Cancel</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
         {% else %}
-        <div class="empty">No listings yet.</div>
+            <p class="empty">No active requests.</p>
         {% endif %}
     </section>
 
     <section>
-        <h2>Buyers</h2>
-        {% if buyers %}
-        <table>
-            <tr>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Reputation</th>
-                <th>Total Deals</th>
-                <th>Commodity</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-                <th>Location</th>
-                <th>Phone</th>
-                <th>Actions</th>
-            </tr>
-            {% for buyer in buyers %}
-            <tr>
-                <td>{{ buyer.name }}</td>
-                <td>
-                    {% if buyer.verified %}
-                        <span class="badge verified">Verified</span>
-                    {% else %}
-                        <span class="badge unverified">Unverified</span>
-                    {% endif %}
-                </td>
-                <td>{{ buyer.reputation }}</td>
-                <td>{{ buyer.total_deals }}</td>
-                <td>{{ buyer.commodity }}</td>
-                <td>{{ buyer.quantity }}</td>
-                <td>{{ buyer.unit }}</td>
-                <td>{{ buyer.location }}</td>
-                <td>{{ buyer.phone }}</td>
-                <td>
-                    <form method="post" action="/dashboard/buyers/verify" style="display:inline;">
-                        <input type="hidden" name="buyer_id" value="{{ buyer.id }}">
-                        <button type="submit">Verify</button>
-                    </form>
+        <h2>✅ Closed Requests</h2>
 
-                    <form method="post" action="/dashboard/buyers/block" style="display:inline;">
-                        <input type="hidden" name="phone" value="{{ buyer.phone }}">
-                        <input type="hidden" name="reason" value="Blocked from dashboard">
-                        <button class="danger" type="submit">Block</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
+        {% if closed_requests %}
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Intent</th>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Location</th>
+                    <th>User Phone</th>
+                    <th>Status</th>
+                    <th>Reactivate</th>
+                </tr>
+
+                {% for item in closed_requests %}
+                <tr>
+                    <td>{{ item.get("intent", "") }}</td>
+                    <td>{{ item.get("commodity", "") }}</td>
+                    <td>{{ item.get("quantity", "") }} {{ item.get("unit", "") }}</td>
+                    <td>{{ item.get("location", "") }}</td>
+                    <td class="phone">{{ item.get("seller_phone", "") }}</td>
+                    <td>{{ item.get("status", "") }}</td>
+                    <td>
+                        <form method="post" action="/dashboard/requests/reactivate">
+                            <input type="hidden" name="listing_id" value="{{ item.get('id', '') }}">
+                            <button class="btn-green" type="submit">Reactivate</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
         {% else %}
-        <div class="empty">No buyers yet.</div>
+            <p class="empty">No closed requests.</p>
         {% endif %}
     </section>
 
     <section>
-        <h2>Deals</h2>
+        <h2>🤝 Deals & Feedback</h2>
+
         {% if deals %}
-        <table>
-            <tr>
-                <th>Deal ID</th>
-                <th>Listing ID</th>
-                <th>Buyer Phone</th>
-                <th>Seller Phone</th>
-                <th>Status</th>
-                <th>Buyer Feedback</th>
-                <th>Seller Feedback</th>
-                <th>Feedback Due</th>
-                <th>Created</th>
-            </tr>
-            {% for deal in deals %}
-            <tr>
-                <td class="small">{{ deal.id }}</td>
-                <td class="small">{{ deal.listing_id }}</td>
-                <td>{{ deal.buyer_phone }}</td>
-                <td>{{ deal.seller_phone }}</td>
-                <td>
-                    {% if deal.status == "confirmed" %}
-                        <span class="badge confirmed">Confirmed</span>
-                    {% else %}
-                        <span class="badge pending">{{ deal.status }}</span>
-                    {% endif %}
-                </td>
-                <td>{{ deal.buyer_feedback }}</td>
-                <td>{{ deal.seller_feedback }}</td>
-                <td>{{ deal.feedback_due_at }}</td>
-                <td>{{ deal.created_at }}</td>
-            </tr>
-            {% endfor %}
-        </table>
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Buyer</th>
+                    <th>Seller</th>
+                    <th>Buyer Feedback</th>
+                    <th>Seller Feedback</th>
+                    <th>Feedback Sent</th>
+                    <th>Created</th>
+                </tr>
+
+                {% for deal in deals %}
+                <tr>
+                    <td>{{ deal.get("status", "") }}</td>
+                    <td class="phone">{{ deal.get("buyer_phone", "") }}</td>
+                    <td class="phone">{{ deal.get("seller_phone", "") }}</td>
+                    <td>{{ deal.get("buyer_feedback", "") }}</td>
+                    <td>{{ deal.get("seller_feedback", "") }}</td>
+                    <td>{{ deal.get("feedback_sent", "") }}</td>
+                    <td>{{ deal.get("created_at", "") }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
         {% else %}
-        <div class="empty">No deals yet.</div>
+            <p class="empty">No deals yet.</p>
         {% endif %}
     </section>
 
     <section>
-        <h2>Fraud Reports</h2>
+        <h2>⚠️ Untrusted Queue</h2>
+
+        {% if untrusted_queue %}
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Reporter</th>
+                    <th>Reported</th>
+                    <th>Reason</th>
+                    <th>Actions</th>
+                </tr>
+
+                {% for case in untrusted_queue %}
+                <tr>
+                    <td>{{ case.get("status", "") }}</td>
+                    <td class="phone">{{ case.get("reporter_phone", "") }}</td>
+                    <td class="phone">{{ case.get("reported_phone", "") }}</td>
+                    <td>{{ case.get("reason", "") }}</td>
+                    <td>
+                        <form method="post" action="/dashboard/untrusted/resolve" style="display:inline;">
+                            <input type="hidden" name="case_id" value="{{ case.get('id', '') }}">
+                            <button class="btn-green" type="submit">Resolve</button>
+                        </form>
+
+                        <form method="post" action="/dashboard/untrusted/block" style="display:inline;">
+                            <input type="hidden" name="case_id" value="{{ case.get('id', '') }}">
+                            <input type="hidden" name="reported_phone" value="{{ case.get('reported_phone', '') }}">
+                            <button class="btn-red" type="submit">Block</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% else %}
+            <p class="empty">No untrusted cases.</p>
+        {% endif %}
+    </section>
+
+    <section>
+        <h2>👤 Registered Users</h2>
+
+        {% if profiles %}
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Phone</th>
+                    <th>Name</th>
+                    <th>Language</th>
+                    <th>City</th>
+                    <th>Area</th>
+                    <th>Verified</th>
+                    <th>Trust</th>
+                    <th>Actions</th>
+                </tr>
+
+                {% for user in profiles %}
+                <tr>
+                    <td class="phone">{{ user.get("phone", "") }}</td>
+                    <td>{{ user.get("name", "") }}</td>
+                    <td>{{ user.get("language", "") }}</td>
+                    <td>{{ user.get("city", "") }}</td>
+                    <td>{{ user.get("neighborhood", "") }}</td>
+                    <td>{{ user.get("verified", "") }}</td>
+                    <td>{{ user.get("trust_score", "") }} - {{ user.get("trust_rank", "") }}</td>
+                    <td>
+                        <form method="post" action="/dashboard/profiles/verify" style="display:inline;">
+                            <input type="hidden" name="phone" value="{{ user.get('phone', '') }}">
+                            <button class="btn-green" type="submit">Verify</button>
+                        </form>
+
+                        <form method="post" action="/dashboard/profiles/block" style="display:inline;">
+                            <input type="hidden" name="phone" value="{{ user.get('phone', '') }}">
+                            <input type="hidden" name="reason" value="Blocked from dashboard">
+                            <button class="btn-red" type="submit">Block</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% else %}
+            <p class="empty">No users yet.</p>
+        {% endif %}
+    </section>
+
+    <section>
+        <h2>🚨 Fraud Reports</h2>
+
         {% if fraud_reports %}
-        <table>
-            <tr>
-                <th>Reporter</th>
-                <th>Reported</th>
-                <th>Reason</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-            </tr>
-            {% for report in fraud_reports %}
-            <tr>
-                <td>{{ report.reporter_phone }}</td>
-                <td>{{ report.reported_phone }}</td>
-                <td>{{ report.reason }}</td>
-                <td>
-                    {% if report.status == "open" %}
-                        <span class="badge open">{{ report.status }}</span>
-                    {% else %}
-                        <span class="badge confirmed">{{ report.status }}</span>
-                    {% endif %}
-                </td>
-                <td>{{ report.created_at }}</td>
-                <td>
-                    <form method="post" action="/dashboard/fraud/resolve">
-                        <input type="hidden" name="report_id" value="{{ report.id }}">
-                        <button type="submit">Resolve</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Reporter</th>
+                    <th>Reported</th>
+                    <th>Reason</th>
+                    <th>Resolve</th>
+                </tr>
+
+                {% for report in fraud_reports %}
+                <tr>
+                    <td>{{ report.get("status", "") }}</td>
+                    <td class="phone">{{ report.get("reporter_phone", "") }}</td>
+                    <td class="phone">{{ report.get("reported_phone", "") }}</td>
+                    <td>{{ report.get("reason", "") }}</td>
+                    <td>
+                        <form method="post" action="/dashboard/fraud/resolve">
+                            <input type="hidden" name="report_id" value="{{ report.get('id', '') }}">
+                            <button class="btn-green" type="submit">Resolve</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
         {% else %}
-        <div class="empty">No fraud reports.</div>
+            <p class="empty">No fraud reports.</p>
         {% endif %}
     </section>
 
-    <section>
-        <h2>Blocked Users</h2>
-        {% if blocked_users %}
-        <table>
-            <tr>
-                <th>Phone</th>
-                <th>Reason</th>
-                <th>Created</th>
-            </tr>
-            {% for user in blocked_users %}
-            <tr>
-                <td>{{ user.phone }}</td>
-                <td>{{ user.reason }}</td>
-                <td>{{ user.created_at }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        {% else %}
-        <div class="empty">No blocked users.</div>
-        {% endif %}
-    </section>
-
-    <section>
-        <h2>Unknown Terms Learning Queue</h2>
-        {% if unknown_terms %}
-        <table>
-            <tr>
-                <th>Term</th>
-                <th>Count</th>
-                <th>Unique Users</th>
-                <th>Status</th>
-                <th>Context</th>
-                <th>Approve As</th>
-                <th>Created</th>
-            </tr>
-            {% for term in unknown_terms %}
-            <tr>
-                <td>{{ term.term }}</td>
-                <td>{{ term.count }}</td>
-                <td>{{ term.unique_reporters }}</td>
-                <td>{{ term.status }}</td>
-                <td class="small">{{ term.context }}</td>
-                <td>
-                    <form method="post" action="/dashboard/learning/approve">
-                        <input type="hidden" name="term" value="{{ term.term }}">
-                        <input type="text" name="normalized" placeholder="e.g. goat" required>
-                        <button type="submit">Approve</button>
-                    </form>
-                </td>
-                <td>{{ term.created_at }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        {% else %}
-        <div class="empty">No unknown terms yet.</div>
-        {% endif %}
-    </section>
-
-</main>
-
+</div>
 </body>
 </html>

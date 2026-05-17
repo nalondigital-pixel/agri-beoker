@@ -81,6 +81,41 @@ def find_pending_seller_decision(phone):
     return None
 
 
+def get_deals_by_phone(phone: str, limit: int = 10):
+    response = (
+        supabase.table("deals")
+        .select("*")
+        .or_(f"buyer_phone.eq.{phone},seller_phone.eq.{phone}")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+
+    deals = response.data or []
+    enriched_deals = []
+
+    for deal in deals:
+        listing_id = deal.get("listing_id")
+        listing = None
+
+        if listing_id:
+            listing_response = (
+                supabase.table("listings")
+                .select("*")
+                .eq("id", listing_id)
+                .limit(1)
+                .execute()
+            )
+
+            if listing_response.data:
+                listing = listing_response.data[0]
+
+        deal["listing"] = listing
+        enriched_deals.append(deal)
+
+    return enriched_deals
+
+
 def update_deal_status(deal_id, status):
     payload = {"status": status}
 

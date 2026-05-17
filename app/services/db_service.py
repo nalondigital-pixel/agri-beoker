@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.db.supabase_client import supabase
 
 
@@ -56,14 +58,49 @@ def get_active_opposite_listings(intent: str, exclude_phone: str | None = None):
     return response.data or []
 
 
+def get_active_listings_by_phone(phone: str, limit: int = 5):
+    response = (
+        supabase.table("listings")
+        .select("*")
+        .eq("seller_phone", phone)
+        .eq("status", "active")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+
+    return response.data or []
+
+
 def mark_listing_matched(listing_id):
     response = (
         supabase.table("listings")
         .update({
             "status": "matched",
+            "matched_at": datetime.now(timezone.utc).isoformat(),
         })
         .eq("id", listing_id)
         .execute()
     )
 
     return response.data
+
+
+def close_listing(listing_id, phone: str, status: str):
+    allowed_statuses = ["cancelled", "fulfilled", "closed"]
+
+    if status not in allowed_statuses:
+        return None
+
+    response = (
+        supabase.table("listings")
+        .update({
+            "status": status,
+            "closed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        .eq("id", listing_id)
+        .eq("seller_phone", phone)
+        .execute()
+    )
+
+    return response.data or []
