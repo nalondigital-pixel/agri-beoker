@@ -43,8 +43,9 @@ def get_dashboard_data():
 
     closed_requests = [
         item for item in listings
-        if item.get("status") in ["fulfilled", "cancelled", "closed", "matched"]
+        if item.get("status") in ["fulfilled", "cancelled", "closed", "matched", "expired"]
     ]
+    
 
     return {
         "listings": listings,
@@ -557,7 +558,7 @@ def close_request(
     if not is_logged_in(request):
         return redirect_to_login()
 
-    if status not in ["fulfilled", "cancelled", "closed"]:
+    if status not in ["fulfilled", "cancelled", "closed", "expired"]:
         return RedirectResponse(url="/dashboard/", status_code=302)
 
     supabase.table("listings").update({

@@ -112,3 +112,60 @@ def send_feedback(secret: str = Query(None)):
         "deals_checked": len(deals),
         "messages_sent": messages_sent,
     }
+
+
+@router.get("/expire-requests")
+def expire_old_requests(
+    secret: str = Query(None),
+    days: int = Query(7),
+):
+    if secret != CRON_SECRET:
+        return {"status": "unauthorized"}
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Supabase/PostgREST filter string for: created_at < now() - interval 'X days'
+    # We compute the cutoff in Python to avoid SQL interval filter issues.
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff_iso = cutoff.isoformat()
+
+    response = (
+        supabase.table("listings")
+        .select("*")
+        .eq("status", "active")
+        .lt("created_at", cutoff_iso)
+        .execute()
+    )
+
+    old_requests = response.data or []
+
+    expired_count = 0
+
+    for item in old_requests:
+        listing_id = item.get("id")
+
+        if not listing_id:
+            continue
+
+        update_response = (
+            supabase.table("listings")
+            .update({
+                "status": "expired",
+                "closed_at": now,
+            })
+            .eq("id", listing_id)
+            .eq("status", "active")
+            .execute()
+        )
+
+        if update_response.data:
+            expired_count += 1
+
+    return {
+        "status": "done",
+        "days": days,
+        "checked": len(old_requests),
+        "expired": expired_count,
+    }
