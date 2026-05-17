@@ -1,147 +1,108 @@
-from app.services.profile_service import create_or_update_profile
 from app.services.session_service import get_session, set_session, clear_session
+from app.services.profile_service import update_profile
+
+
+LANGUAGE_OPTIONS = {
+    "1": "english",
+    "english": "english",
+    "eng": "english",
+
+    "2": "shona",
+    "shona": "shona",
+    "chiShona".lower(): "shona",
+
+    "3": "ndebele",
+    "ndebele": "ndebele",
+    "isindebele": "ndebele",
+}
 
 
 LANGUAGE_PROMPT = """
-🌍 Choose your language / Shandura mutauro / Khetha ulimi
+Welcome to Agri Broker 👋
+
+Choose your language:
 
 English
 Shona
 Ndebele
 """
 
+
 NAME_PROMPTS = {
-    "english": "👤 What is your name?",
-    "shona": "👤 Zita renyu ndiani?",
-    "ndebele": "👤 Ungubani ibizo lakho?",
+    "english": "Great. What is your name?",
+    "shona": "Zvakanaka. Munonzi ani?",
+    "ndebele": "Kulungile. Ungubani igama lakho?",
 }
 
-ROLE_PROMPTS = {
-    "english": """
-Hi {name}. What do you want to do?
 
-Buy
-Sell
-Both
+CITY_PROMPTS = {
+    "english": "Which city/town/area are you in?\n\nExample: Kadoma",
+    "shona": "Muri kuguta kana nzvimbo ipi?\n\nSemuenzaniso: Kadoma",
+    "ndebele": "Ukukuphi idolobho/indawo?\n\nIsibonelo: Kadoma",
+}
+
+
+RULES_TEXT = {
+    "english": """
+Before you continue, please agree to these rules:
+
+1. Be honest about what you are buying or selling.
+2. Do not scam, threaten, or mislead other users.
+3. Only share real produce/livestock requests.
+4. Agri Broker may reduce trust points or block users who abuse the system.
+
+Tap Agree to continue.
 """,
     "shona": """
-Mhoroi {name}. Munoda kuita chii?
+Musati maenderera mberi, bvumiranai nemitemo iyi:
 
-Kutenga
-Kutengesa
-Zvese
+1. Taurai chokwadi pane zvamuri kutenga kana kutengesa.
+2. Musabire, kutyisidzira, kana kunyengera vamwe.
+3. Shandisai system pazvinhu zvechokwadi zvekurima/zvipfuyo.
+4. Agri Broker inogona kuderedza trust points kana kuvhara vanotyora mitemo.
+
+Dzvanyai Agree kuti muenderere mberi.
 """,
     "ndebele": """
-Sawubona {name}. Ufuna ukwenzani?
+Ungakaqhubeki, sicela uvumelane lemithetho le:
 
-Ukuthenga
-Ukuthengisa
-Kokubili
+1. Khuluma iqiniso ngalokho okuthengayo kumbe okuthengisayo.
+2. Ungaqili, ungesabisi, ungadukisi abanye.
+3. Sebenzisa system ngezicelo zeqiniso zokulima/izifuyo.
+4. Agri Broker inganciphisa ama trust points kumbe ivale abasebenzisa kabi system.
+
+Cindezela Agree ukuze uqhubeke.
 """,
 }
 
-LOCATION_PROMPTS = {
-    "english": "📍 Send your city and neighborhood. Example: Kadoma, Rimuka",
-    "shona": "📍 Tumira guta nenzvimbo. Semuenzaniso: Kadoma, Rimuka",
-    "ndebele": "📍 Thumela idolobho lendawo. Isibonelo: Kadoma, Rimuka",
-}
-
-AGREE_PROMPTS = {
-    "english": """
-🛡️ Community safety rules:
-- No fake listings
-- No ghosting buyers/sellers
-- No fraud
-- Respect all users
-
-Type AGREE to continue.
-""",
-    "shona": """
-🛡️ Mitemo yekuchengetedzana:
-- Hapana fake listings
-- Usanyangarika pa deal
-- Hapana chitsotsi
-- Remekedza vamwe
-
-Nyora AGREE kuti uenderere mberi.
-""",
-    "ndebele": """
-🛡️ Imithetho yokuphepha:
-- Akula ma fake listings
-- Unganyamalali ku deal
-- Akula ubuqili
-- Hlonipha abanye
-
-Bhala AGREE ukuze uqhubeke.
-""",
-}
 
 DONE_MESSAGES = {
-    "english": """
-✅ Registration complete, {name}.
-
-You can now use the menu to buy, sell, or check deals.
-""",
-    "shona": """
-✅ Wapedza kunyoresa, {name}.
-
-Munogona kushandisa menu kutenga, kutengesa, kana kuona madeals.
-""",
-    "ndebele": """
-✅ Usuqedile ukubhalisa, {name}.
-
-Ungasebenzisa imenyu ukuthenga, ukuthengisa, kumbe ukuhlola ama-deals.
-""",
+    "english": "✅ Registration complete, {name}.\n\nYou can now use the menu to buy, sell, or check deals.",
+    "shona": "✅ Wapedza kunyoresa, {name}.\n\nIye zvino munogona kushandisa menu kutenga, kutengesa, kana kuona madeals.",
+    "ndebele": "✅ Usuqedile ukubhalisa, {name}.\n\nManje usungasebenzisa i-menu ukuthenga, ukuthengisa, kumbe ukubona ama-deals.",
 }
 
 
-def normalize_language(choice: str):
-    choice = choice.strip().lower()
+def normalize_language(message: str):
+    if not message:
+        return None
 
-    if choice in ["1", "english", "eng"]:
-        return "english"
-
-    if choice in ["2", "shona", "chi shona", "chishona"]:
-        return "shona"
-
-    if choice in ["3", "ndebele", "isindebele"]:
-        return "ndebele"
-
-    return None
-
-
-def normalize_role(choice: str):
-    choice = choice.strip().lower()
-
-    if choice in ["1", "buy", "buyer", "kutenga", "ukuthenga"]:
-        return "buyer"
-
-    if choice in ["2", "sell", "seller", "kutengesa", "ukuthengisa"]:
-        return "seller"
-
-    if choice in ["3", "both", "zvese", "kokubili"]:
-        return "both"
-
-    return None
-
-
-def start_registration(phone: str):
-    set_session(phone, "choose_language", {})
-    return LANGUAGE_PROMPT
+    key = message.strip().lower()
+    return LANGUAGE_OPTIONS.get(key)
 
 
 def handle_registration_message(phone: str, message: str):
     session = get_session(phone)
 
     if not session:
-        return start_registration(phone)
+        set_session(phone, "choose_language", {})
+        return LANGUAGE_PROMPT
 
-    step = session.get("current_step")
+    current_step = session.get("current_step")
     temp_data = session.get("temp_data") or {}
-    message_clean = message.strip()
 
-    if step == "choose_language":
-        language = normalize_language(message_clean)
+    if current_step == "choose_language":
+        language = normalize_language(message)
 
         if not language:
             return LANGUAGE_PROMPT
@@ -149,72 +110,63 @@ def handle_registration_message(phone: str, message: str):
         temp_data["language"] = language
         set_session(phone, "enter_name", temp_data)
 
-        return NAME_PROMPTS[language]
+        return NAME_PROMPTS.get(language, NAME_PROMPTS["english"])
 
-    if step == "enter_name":
-        language = temp_data.get("language", "english")
-        name = message_clean.strip()
+    if current_step == "enter_name":
+        name = message.strip()
 
         if len(name) < 2:
-            return NAME_PROMPTS[language]
+            language = temp_data.get("language", "english")
+            return NAME_PROMPTS.get(language, NAME_PROMPTS["english"])
 
         temp_data["name"] = name
-        set_session(phone, "choose_role", temp_data)
+        set_session(phone, "enter_city", temp_data)
 
-        return ROLE_PROMPTS[language].format(name=name)
-
-    if step == "choose_role":
         language = temp_data.get("language", "english")
-        role = normalize_role(message_clean)
+        return CITY_PROMPTS.get(language, CITY_PROMPTS["english"])
 
-        if not role:
-            return ROLE_PROMPTS[language].format(name=temp_data.get("name", ""))
+    if current_step == "enter_city":
+        city = message.strip()
 
-        temp_data["role"] = role
-        set_session(phone, "enter_location", temp_data)
-
-        return LOCATION_PROMPTS[language]
-
-    if step == "enter_location":
-        language = temp_data.get("language", "english")
-
-        if "," in message_clean:
-            city, neighborhood = [part.strip() for part in message_clean.split(",", 1)]
-        else:
-            city = message_clean
-            neighborhood = ""
+        if len(city) < 2:
+            language = temp_data.get("language", "english")
+            return CITY_PROMPTS.get(language, CITY_PROMPTS["english"])
 
         temp_data["city"] = city
-        temp_data["neighborhood"] = neighborhood
-
         set_session(phone, "agree_terms", temp_data)
 
-        return AGREE_PROMPTS[language]
+        return "__SHOW_RULES_AGREE_BUTTON__"
 
-    if step == "agree_terms":
+    if current_step == "agree_terms":
+        normalized = message.strip().lower()
+
+        if normalized not in ["agree", "registration_agree_terms", "yes", "1"]:
+            return "__SHOW_RULES_AGREE_BUTTON__"
+
         language = temp_data.get("language", "english")
+        name = temp_data.get("name", "User")
+        city = temp_data.get("city")
 
-        if message_clean.upper() != "AGREE":
-            return AGREE_PROMPTS[language]
-
-        create_or_update_profile(phone, {
-            "name": temp_data.get("name"),
-            "language": temp_data.get("language"),
-            "role": temp_data.get("role"),
-            "city": temp_data.get("city"),
-            "neighborhood": temp_data.get("neighborhood"),
+        update_profile(phone, {
+            "name": name,
+            "language": language,
+            "role": "both",
+            "city": city,
             "agreed_terms": True,
-            "free_daily_tokens": 3,
-            "daily_tokens": 3,
-            "ghost_match_strikes": 0,
-            "verified": False,
-            "reputation": 0,
             "trust_score": 25,
-            "trust_rank": "New Seller",
+            "trust_rank": "New User",
+            "daily_tokens": 3,
+            "free_daily_tokens": 3,
         })
 
         clear_session(phone)
 
-        return DONE_MESSAGES[language].format(name=temp_data.get("name", ""))
+        return DONE_MESSAGES.get(language, DONE_MESSAGES["english"]).format(name=name)
 
-    return start_registration(phone)
+    clear_session(phone)
+    set_session(phone, "choose_language", {})
+    return LANGUAGE_PROMPT
+
+
+def get_rules_text(language: str):
+    return RULES_TEXT.get(language, RULES_TEXT["english"])

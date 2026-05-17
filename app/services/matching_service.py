@@ -9,6 +9,21 @@ def normalize_text(value):
     return str(value).strip().lower()
 
 
+def singularize(value):
+    value = normalize_text(value)
+
+    if value.endswith("ies"):
+        return value[:-3] + "y"
+
+    if value.endswith("es") and len(value) > 3:
+        return value[:-2]
+
+    if value.endswith("s") and len(value) > 3:
+        return value[:-1]
+
+    return value
+
+
 def normalize_number(value):
     try:
         return float(value)
@@ -23,10 +38,16 @@ def commodity_matches(item_a, item_b):
     if not item_a or not item_b:
         return False
 
+    singular_a = singularize(item_a)
+    singular_b = singularize(item_b)
+
     return (
         item_a == item_b
+        or singular_a == singular_b
         or item_a in item_b
         or item_b in item_a
+        or singular_a in singular_b
+        or singular_b in singular_a
     )
 
 
@@ -40,23 +61,42 @@ def unit_score(unit_a, unit_b):
     if unit_a == unit_b:
         return 10, "Same unit"
 
-    return 0, "Different unit"
+    return 3, "Different unit but still possible"
 
 
-def quantity_score(new_quantity, existing_quantity):
-    new_quantity = normalize_number(new_quantity)
-    existing_quantity = normalize_number(existing_quantity)
+def buyer_table_quantity_score(seller_quantity, buyer_quantity):
+    seller_quantity = normalize_number(seller_quantity)
+    buyer_quantity = normalize_number(buyer_quantity)
 
-    if not new_quantity or not existing_quantity:
+    if not seller_quantity or not buyer_quantity:
         return 5, "Quantity flexible"
 
-    if existing_quantity >= new_quantity:
-        return 15, "Quantity compatible"
+    if seller_quantity >= buyer_quantity:
+        return 15, "Seller quantity can satisfy buyer"
 
-    if existing_quantity >= new_quantity * 0.5:
-        return 8, "Partial quantity compatible"
+    if seller_quantity >= buyer_quantity * 0.5:
+        return 8, "Seller has partial quantity"
 
-    return 0, "Quantity too low"
+    return 2, "Quantity may still be negotiable"
+
+
+def listing_quantity_score(sell_listing, buy_listing):
+    sell_quantity = normalize_number(sell_listing.get("quantity"))
+    buy_quantity = normalize_number(buy_listing.get("quantity"))
+
+    if not sell_quantity or not buy_quantity:
+        return 5, "Quantity flexible"
+
+    if sell_quantity == buy_quantity:
+        return 15, "Exact quantity match"
+
+    if sell_quantity >= buy_quantity:
+        return 15, "Seller has enough quantity"
+
+    if sell_quantity >= buy_quantity * 0.5:
+        return 8, "Seller has partial quantity"
+
+    return 2, "Quantity may still be negotiable"
 
 
 def geo_score(geo_info):
@@ -100,10 +140,6 @@ def trust_score_from_buyer(buyer):
 
 
 def calculate_match_score(listing, buyer):
-    """
-    Existing buyer table matching.
-    Used for old buyer records.
-    """
     reasons = []
     score = 0
 
@@ -124,7 +160,7 @@ def calculate_match_score(listing, buyer):
     score += geo_score(geo_info)
     reasons.append(geo_info.get("message", "Location match"))
 
-    q_score, q_reason = quantity_score(
+    q_score, q_reason = buyer_table_quantity_score(
         listing.get("quantity"),
         buyer.get("quantity"),
     )
@@ -146,10 +182,6 @@ def calculate_match_score(listing, buyer):
 
 
 def find_matches(listing):
-    """
-    Matches a new sell request against old buyers table.
-    Keeps your existing buyer-table logic working.
-    """
     response = supabase.table("buyers").select("*").execute()
 
     buyers = response.data or []
@@ -177,23 +209,28 @@ def find_matches(listing):
 
 
 def calculate_listing_to_listing_score(new_listing, existing_listing):
-    """
-    Matches active buy/sell listings against each other.
-    Example:
-    new sell request ↔ old buy request
-    new buy request ↔ old sell request
-    """
     reasons = []
     score = 0
 
-    if new_listing.get("intent") == existing_listing.get("intent"):
+    new_intent = normalize_text(new_listing.get("intent"))
+    existing_intent = normalize_text(existing_listing.get("intent"))
+
+    if not new_intent or not existing_intent:
+        return 0, ["Missing intent"], None
+
+    if new_intent == existing_intent:
         return 0, ["Same intent"], None
+
+    if new_listing.get("seller_phone") == existing_listing.get("seller_phone"):
+        return 0, ["Same user ignored"], None
 
     if not commodity_matches(
         new_listing.get("commodity"),
         existing_listing.get("commodity"),
     ):
-        return 0, ["Commodity does not match"], None
+        return 0, [
+            f"Commodity does not match: {new_listing.get('commodity')} vs {existing_listing.get('commodity')}"
+        ], None
 
     score += 50
     reasons.append("Commodity match")
@@ -209,16 +246,20 @@ def calculate_listing_to_listing_score(new_listing, existing_listing):
     score += geo_score(geo_info)
     reasons.append(geo_info.get("message", "Location match"))
 
-    q_score, q_reason = quantity_score(
-        new_listing.get("quantity"),
-        existing_listing.get("quantity"),
-    )
+    if new_intent == "sell":
+        sell_listing = new_listing
+        buy_listing = existing_listing
+    else:
+        sell_listing = existing_listing
+        buy_listing = new_listing
+
+    q_score, q_reason = listing_quantity_score(sell_listing, buy_listing)
     score += q_score
     reasons.append(q_reason)
 
     u_score, u_reason = unit_score(
-        new_listing.get("unit"),
-        existing_listing.get("unit"),
+        sell_listing.get("unit"),
+        buy_listing.get("unit"),
     )
     score += u_score
     reasons.append(u_reason)
@@ -229,11 +270,19 @@ def calculate_listing_to_listing_score(new_listing, existing_listing):
 def find_active_listing_matches(new_listing, active_opposite_listings):
     matches = []
 
+    print("\n========== ACTIVE MATCH DEBUG ==========")
+    print("NEW LISTING:", new_listing)
+    print("ACTIVE OPPOSITES FOUND:", len(active_opposite_listings))
+
     for existing_listing in active_opposite_listings:
         score, reasons, geo_info = calculate_listing_to_listing_score(
             new_listing,
             existing_listing,
         )
+
+        print("CHECKING EXISTING:", existing_listing)
+        print("SCORE:", score)
+        print("REASONS:", reasons)
 
         if score <= 0:
             continue
@@ -249,5 +298,8 @@ def find_active_listing_matches(new_listing, active_opposite_listings):
         key=lambda item: item.get("_match_score") or 0,
         reverse=True,
     )
+
+    print("FINAL ACTIVE MATCHES:", len(matches))
+    print("========================================\n")
 
     return matches

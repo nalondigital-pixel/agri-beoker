@@ -37,17 +37,21 @@ def get_listing_by_id(listing_id):
     return None
 
 
-def get_active_opposite_listings(intent: str):
+def get_active_opposite_listings(intent: str, exclude_phone: str | None = None):
     opposite_intent = "buy" if intent == "sell" else "sell"
 
-    response = (
+    query = (
         supabase.table("listings")
         .select("*")
         .eq("status", "active")
         .eq("intent", opposite_intent)
         .order("created_at", desc=True)
-        .execute()
     )
+
+    if exclude_phone:
+        query = query.neq("seller_phone", exclude_phone)
+
+    response = query.execute()
 
     return response.data or []
 

@@ -38,11 +38,18 @@ from app.services.profile_service import (
     get_display_name,
     get_profile,
 )
-from app.services.registration_service import handle_registration_message
+from app.services.registration_service import (
+    handle_registration_message,
+    get_rules_text,
+)
 from app.services.language_service import translate
 from app.services.feedback_service import (
     handle_feedback_response,
     schedule_deal_feedback,
+)
+from app.services.message_dedupe_service import (
+    has_processed_message,
+    mark_message_processed,
 )
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
@@ -57,7 +64,7 @@ def format_trust(phone: str):
         return "🛡️ New user"
 
     trust_score = profile.get("trust_score") or 25
-    trust_rank = profile.get("trust_rank") or "New Seller"
+    trust_rank = profile.get("trust_rank") or "New User"
     successful_deals = profile.get("successful_deals") or 0
     total_matches = profile.get("total_matches_allocated") or 0
 
@@ -122,6 +129,8 @@ def normalize_command(message: str):
         "feedback_success": "1",
         "feedback_failed": "2",
 
+        "registration_agree_terms": "registration_agree_terms",
+
         "menu_buy": "menu_buy",
         "menu_sell": "menu_sell",
         "menu_deals": "menu_deals",
@@ -156,7 +165,11 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
 
 
 def notify_active_request_matches(new_listing):
-    active_opposites = get_active_opposite_listings(new_listing.get("intent"))
+    active_opposites = get_active_opposite_listings(
+        new_listing.get("intent"),
+        exclude_phone=new_listing.get("seller_phone"),
+    )
+
     active_matches = find_active_listing_matches(new_listing, active_opposites)
 
     sent_count = 0
@@ -173,17 +186,18 @@ def notify_active_request_matches(new_listing):
         if not buyer_phone or not seller_phone:
             continue
 
-        # Use seller listing details for the buyer alert.
         if new_listing.get("intent") == "sell":
             seller_listing = new_listing
+            match_data = matched_request
         else:
             seller_listing = matched_request
+            match_data = matched_request
 
         send_match_alert_to_buyer(
             buyer_phone=buyer_phone,
             seller_phone=seller_phone,
             listing=seller_listing,
-            match_data=matched_request,
+            match_data=match_data,
         )
 
         send_whatsapp_message(
@@ -221,6 +235,14 @@ async def receive_message(request: Request):
 
         message_data = value["messages"][0]
         sender_phone = message_data["from"]
+        whatsapp_message_id = message_data.get("id")
+
+        if whatsapp_message_id and has_processed_message(whatsapp_message_id):
+            print("Duplicate WhatsApp message ignored:", whatsapp_message_id)
+            return {"status": "duplicate_message_ignored"}
+
+        if whatsapp_message_id:
+            mark_message_processed(whatsapp_message_id, sender_phone)
 
         incoming_message = extract_incoming_message(message_data)
 
@@ -238,6 +260,7 @@ async def receive_message(request: Request):
 
         print("\n========== INCOMING MESSAGE ==========")
         print("FROM:", sender_phone)
+        print("MESSAGE ID:", whatsapp_message_id)
         print("MESSAGE:", incoming_message)
 
         if is_blocked_user(sender_phone):
@@ -251,6 +274,25 @@ async def receive_message(request: Request):
 
         if not has_completed_registration(sender_phone):
             reply = handle_registration_message(sender_phone, incoming_message)
+
+            if reply == "__SHOW_RULES_AGREE_BUTTON__":
+                profile = get_profile(sender_phone) or {}
+                language = profile.get("language") or "english"
+
+                session = get_session(sender_phone)
+                temp_data = session.get("temp_data") if session else {}
+                language = temp_data.get("language") or language
+
+                send_whatsapp_buttons(
+                    sender_phone,
+                    get_rules_text(language),
+                    [
+                        {"id": "registration_agree_terms", "title": "Agree"},
+                    ],
+                )
+
+                return {"status": "registration_rules_button_sent"}
+
             send_whatsapp_message(sender_phone, reply)
 
             if (
@@ -494,17 +536,23 @@ async def receive_message(request: Request):
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
 
+        print("\n========== EXTRACTED MARKET DATA ==========")
+        print(extracted)
+
         listing = save_listing(extracted)
 
         if not listing:
             return {"status": "error", "message": "Listing could not be saved"}
+
+        print("\n========== SAVED LISTING ==========")
+        print(listing)
 
         active_match_count = notify_active_request_matches(listing)
 
         matches = []
 
         if forced_intent == "sell":
-            matches = find_matches(extracted)
+            matches = find_matches(listing)
 
         if not matches and active_match_count == 0:
             send_whatsapp_message(
