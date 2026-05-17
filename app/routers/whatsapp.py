@@ -1,3 +1,6 @@
+import os
+from uuid import uuid4
+
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse
 
@@ -5,7 +8,9 @@ from app.config import WHATSAPP_VERIFY_TOKEN
 from app.services.ai_extractor import extract_market_data
 from app.services.db_service import save_listing, get_listing_by_id
 from app.services.matching_service import find_matches
-from app.services.whatsapp_service import send_whatsapp_message
+from app.services.whatsapp_service import send_whatsapp_message, send_whatsapp_buttons
+from app.services.media_service import get_media_url, download_media
+from app.services.transcription_service import transcribe_audio
 from app.services.deal_service import (
     create_deal,
     find_pending_deal_by_buyer_phone,
@@ -50,6 +55,54 @@ def format_trust(phone: str):
     return f"🛡️ {trust_score}% {trust_rank} | Deals: {successful_deals}/{total_matches}"
 
 
+def extract_incoming_message(message_data: dict):
+    if "text" in message_data:
+        return message_data["text"]["body"].strip()
+
+    if "interactive" in message_data:
+        interactive = message_data["interactive"]
+
+        if interactive.get("type") == "button_reply":
+            return interactive["button_reply"]["id"]
+
+    if "audio" in message_data:
+        media_id = message_data["audio"]["id"]
+        media_url = get_media_url(media_id)
+
+        if not media_url:
+            return None
+
+        os.makedirs("tmp", exist_ok=True)
+        audio_path = f"tmp/{uuid4()}.ogg"
+
+        download_media(media_url, audio_path)
+
+        transcript = transcribe_audio(audio_path)
+
+        if transcript:
+            return transcript.strip()
+
+        return "VOICE_TRANSCRIPTION_NOT_READY"
+
+    return None
+
+
+def normalize_command(message: str):
+    message = message.strip().lower()
+
+    command_map = {
+        "buyer_interested": "1",
+        "buyer_not_interested": "2",
+        "seller_share_contacts": "1",
+        "seller_wait_better": "2",
+        "seller_cancel": "3",
+        "feedback_success": "1",
+        "feedback_failed": "2",
+    }
+
+    return command_map.get(message, message)
+
+
 @router.get("/")
 def verify_webhook(request: Request):
     params = request.query_params
@@ -74,12 +127,21 @@ async def receive_message(request: Request):
             return {"status": "ignored_non_message_event"}
 
         message_data = value["messages"][0]
-
-        if "text" not in message_data:
-            return {"status": "ignored_non_text_message"}
-
-        incoming_message = message_data["text"]["body"].strip()
         sender_phone = message_data["from"]
+
+        incoming_message = extract_incoming_message(message_data)
+
+        if not incoming_message:
+            return {"status": "ignored_unsupported_message"}
+
+        if incoming_message == "VOICE_TRANSCRIPTION_NOT_READY":
+            send_whatsapp_message(
+                sender_phone,
+                "🎤 Voice note received, but voice transcription is not connected yet. Please type your listing for now.",
+            )
+            return {"status": "voice_received_not_transcribed"}
+
+        incoming_message = normalize_command(incoming_message)
 
         print("\n========== INCOMING MESSAGE ==========")
         print("FROM:", sender_phone)
@@ -88,20 +150,17 @@ async def receive_message(request: Request):
         if is_blocked_user(sender_phone):
             return {"status": "blocked_user_ignored"}
 
-        # Feedback flow must run before normal menu commands
         feedback_result = handle_feedback_response(sender_phone, incoming_message)
 
         if feedback_result and feedback_result.get("handled"):
             send_whatsapp_message(sender_phone, feedback_result.get("reply"))
             return {"status": "feedback_handled"}
 
-        # Registration flow
         if not has_completed_registration(sender_phone):
             reply = handle_registration_message(sender_phone, incoming_message)
             send_whatsapp_message(sender_phone, reply)
             return {"status": "registration_flow"}
 
-        # Fraud report flow
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
 
@@ -128,7 +187,6 @@ async def receive_message(request: Request):
 
             return {"status": "fraud_report_created", "report": report}
 
-        # Seller decision flow
         seller_deal = find_pending_seller_decision(sender_phone)
 
         if seller_deal and incoming_message in ["1", "2", "3"]:
@@ -152,28 +210,31 @@ async def receive_message(request: Request):
                 seller_name = get_display_name(seller_phone)
                 buyer_name = get_display_name(buyer_phone)
 
-                buyer_message = translate(
+                send_whatsapp_message(
                     buyer_phone,
-                    "deal_approved_buyer",
-                    seller_name=seller_name,
-                    seller_phone=seller_phone,
-                    commodity=listing.get("commodity"),
-                    quantity=listing.get("quantity"),
-                    location=listing.get("location"),
+                    translate(
+                        buyer_phone,
+                        "deal_approved_buyer",
+                        seller_name=seller_name,
+                        seller_phone=seller_phone,
+                        commodity=listing.get("commodity"),
+                        quantity=listing.get("quantity"),
+                        location=listing.get("location"),
+                    ),
                 )
 
-                seller_message = translate(
+                send_whatsapp_message(
                     seller_phone,
-                    "contact_shared_seller",
-                    buyer_name=buyer_name,
-                    buyer_phone=buyer_phone,
-                    commodity=listing.get("commodity"),
-                    quantity=listing.get("quantity"),
-                    location=listing.get("location"),
+                    translate(
+                        seller_phone,
+                        "contact_shared_seller",
+                        buyer_name=buyer_name,
+                        buyer_phone=buyer_phone,
+                        commodity=listing.get("commodity"),
+                        quantity=listing.get("quantity"),
+                        location=listing.get("location"),
+                    ),
                 )
-
-                send_whatsapp_message(buyer_phone, buyer_message)
-                send_whatsapp_message(seller_phone, seller_message)
 
                 return {"status": "deal_confirmed_by_seller"}
 
@@ -199,7 +260,6 @@ async def receive_message(request: Request):
 
                 return {"status": "seller_cancelled_deal"}
 
-        # Buyer interest flow
         if incoming_message.lower() in ["yes", "1"]:
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
@@ -241,11 +301,32 @@ async def receive_message(request: Request):
                 location=listing.get("location"),
             )
 
-            send_whatsapp_message(seller_phone, seller_prompt)
+            send_whatsapp_buttons(
+                seller_phone,
+                seller_prompt,
+                [
+                    {"id": "seller_share_contacts", "title": "Share"},
+                    {"id": "seller_wait_better", "title": "Wait"},
+                    {"id": "seller_cancel", "title": "Cancel"},
+                ],
+            )
 
             return {"status": "seller_approval_requested"}
 
-        # Daily spam limit
+        if incoming_message == "2":
+            deal = find_pending_deal_by_buyer_phone(sender_phone)
+
+            if deal:
+                update_buyer_decision(deal.get("id"), "not_interested")
+                update_deal_status(deal.get("id"), "buyer_declined")
+
+                send_whatsapp_message(
+                    sender_phone,
+                    "✅ Noted. We will not continue with this match.",
+                )
+
+                return {"status": "buyer_declined"}
+
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
@@ -255,11 +336,10 @@ async def receive_message(request: Request):
             )
             return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
 
-        # Listing flow
         extracted = extract_market_data(
-        incoming_message,
-         reporter_phone=sender_phone,
-)
+            incoming_message,
+            reporter_phone=sender_phone,
+        )
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
 
@@ -299,9 +379,9 @@ async def receive_message(request: Request):
             if not deal:
                 continue
 
-        match_reasons = ", ".join(buyer.get("_match_reasons", []))
+            match_reasons = ", ".join(buyer.get("_match_reasons", []))
 
-        buyer_message = translate(
+            buyer_message = translate(
                 buyer_phone,
                 "buyer_match_alert",
                 commodity=extracted.get("commodity"),
@@ -313,9 +393,16 @@ async def receive_message(request: Request):
                 match_reasons=match_reasons,
             )
 
-        send_whatsapp_message(buyer_phone, buyer_message)
+            send_whatsapp_buttons(
+                buyer_phone,
+                buyer_message,
+                [
+                    {"id": "buyer_interested", "title": "Interested"},
+                    {"id": "buyer_not_interested", "title": "Not Interested"},
+                ],
+            )
 
-        sent_alerts.append({
+            sent_alerts.append({
                 "buyer": buyer,
                 "deal": deal,
             })
