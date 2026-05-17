@@ -6,14 +6,22 @@ from fastapi.responses import PlainTextResponse
 
 from app.config import WHATSAPP_VERIFY_TOKEN
 from app.services.ai_extractor import extract_market_data
-from app.services.db_service import save_listing, get_listing_by_id
-from app.services.matching_service import find_matches
+from app.services.db_service import (
+    save_listing,
+    get_listing_by_id,
+    get_active_opposite_listings,
+)
+from app.services.matching_service import (
+    find_matches,
+    find_active_listing_matches,
+)
 from app.services.whatsapp_service import send_whatsapp_message, send_whatsapp_buttons
 from app.services.media_service import get_media_url, download_media
 from app.services.transcription_service import transcribe_audio
 from app.services.session_service import get_session, set_session, clear_session
 from app.services.deal_service import (
     create_deal,
+    create_deal_between_requests,
     find_pending_deal_by_buyer_phone,
     find_pending_seller_decision,
     update_deal_status,
@@ -59,7 +67,7 @@ def format_trust(phone: str):
 def show_main_menu(phone: str):
     send_whatsapp_buttons(
         phone,
-        "Welcome back 👋\n\nWhat do you want to do?",
+        translate(phone, "main_menu"),
         [
             {"id": "menu_buy", "title": "Buy"},
             {"id": "menu_sell", "title": "Sell"},
@@ -122,6 +130,72 @@ def normalize_command(message: str):
     return command_map.get(message, message)
 
 
+def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
+    match_reasons = ", ".join(match_data.get("_match_reasons", []))
+
+    buyer_message = translate(
+        buyer_phone,
+        "buyer_match_alert",
+        commodity=listing.get("commodity"),
+        quantity=listing.get("quantity"),
+        location=listing.get("location"),
+        distance_match=match_data.get("_geo_message", "Location match"),
+        seller_trust=format_trust(seller_phone),
+        match_score=match_data.get("_match_score", 0),
+        match_reasons=match_reasons,
+    )
+
+    send_whatsapp_buttons(
+        buyer_phone,
+        buyer_message,
+        [
+            {"id": "buyer_interested", "title": "Interested"},
+            {"id": "buyer_not_interested", "title": "Not Interested"},
+        ],
+    )
+
+
+def notify_active_request_matches(new_listing):
+    active_opposites = get_active_opposite_listings(new_listing.get("intent"))
+    active_matches = find_active_listing_matches(new_listing, active_opposites)
+
+    sent_count = 0
+
+    for matched_request in active_matches:
+        deal = create_deal_between_requests(new_listing, matched_request)
+
+        if not deal:
+            continue
+
+        buyer_phone = deal.get("buyer_phone")
+        seller_phone = deal.get("seller_phone")
+
+        if not buyer_phone or not seller_phone:
+            continue
+
+        # Use seller listing details for the buyer alert.
+        if new_listing.get("intent") == "sell":
+            seller_listing = new_listing
+        else:
+            seller_listing = matched_request
+
+        send_match_alert_to_buyer(
+            buyer_phone=buyer_phone,
+            seller_phone=seller_phone,
+            listing=seller_listing,
+            match_data=matched_request,
+        )
+
+        send_whatsapp_message(
+            seller_phone,
+            translate(seller_phone, "listing_saved_with_matches", match_count=1),
+        )
+
+        sent_count += 1
+
+    return sent_count
+
+
 @router.get("/")
 def verify_webhook(request: Request):
     params = request.query_params
@@ -179,7 +253,11 @@ async def receive_message(request: Request):
             reply = handle_registration_message(sender_phone, incoming_message)
             send_whatsapp_message(sender_phone, reply)
 
-            if "Registration complete" in reply or "Wapedza kunyoresa" in reply or "Usuqedile ukubhalisa" in reply:
+            if (
+                "Registration complete" in reply
+                or "Wapedza kunyoresa" in reply
+                or "Usuqedile ukubhalisa" in reply
+            ):
                 show_main_menu(sender_phone)
 
             return {"status": "registration_flow"}
@@ -189,32 +267,33 @@ async def receive_message(request: Request):
             return {"status": "main_menu"}
 
         if incoming_message == "menu_buy":
-        set_session(sender_phone, "create_buy_request", {})
+            set_session(sender_phone, "create_buy_request", {})
 
-        send_whatsapp_message(
-            sender_phone,
-            translate(sender_phone, "buy_prompt"),
-        )
+            send_whatsapp_message(
+                sender_phone,
+                translate(sender_phone, "buy_prompt"),
+            )
 
-        return {"status": "buy_flow_started"}
+            return {"status": "buy_flow_started"}
 
-    if incoming_message == "menu_sell":
-        set_session(sender_phone, "create_sell_listing", {})
+        if incoming_message == "menu_sell":
+            set_session(sender_phone, "create_sell_listing", {})
 
-        send_whatsapp_message(
-            sender_phone,
-            translate(sender_phone, "sell_prompt"),
-        )
+            send_whatsapp_message(
+                sender_phone,
+                translate(sender_phone, "sell_prompt"),
+            )
 
-        return {"status": "sell_flow_started"}
+            return {"status": "sell_flow_started"}
 
-    if incoming_message == "menu_deals":
-        send_whatsapp_message(
-            sender_phone,
-            translate(sender_phone, "deals_coming"),
-        )
+        if incoming_message == "menu_deals":
+            send_whatsapp_message(
+                sender_phone,
+                translate(sender_phone, "deals_coming"),
+            )
 
-        return {"status": "deals_menu"}
+            return {"status": "deals_menu"}
+
         session = get_session(sender_phone)
 
         forced_intent = None
@@ -385,7 +464,7 @@ async def receive_message(request: Request):
 
                 send_whatsapp_message(
                     sender_phone,
-                    "✅ Noted. We will not continue with this match.",
+                    translate(sender_phone, "buyer_declined"),
                 )
 
                 return {"status": "buyer_declined"}
@@ -420,9 +499,14 @@ async def receive_message(request: Request):
         if not listing:
             return {"status": "error", "message": "Listing could not be saved"}
 
-        matches = find_matches(extracted)
+        active_match_count = notify_active_request_matches(listing)
 
-        if not matches:
+        matches = []
+
+        if forced_intent == "sell":
+            matches = find_matches(extracted)
+
+        if not matches and active_match_count == 0:
             send_whatsapp_message(
                 sender_phone,
                 translate(sender_phone, "listing_saved_no_matches"),
@@ -451,27 +535,11 @@ async def receive_message(request: Request):
             if not deal:
                 continue
 
-            match_reasons = ", ".join(buyer.get("_match_reasons", []))
-
-            buyer_message = translate(
-                buyer_phone,
-                "buyer_match_alert",
-                commodity=extracted.get("commodity"),
-                quantity=extracted.get("quantity"),
-                location=extracted.get("location"),
-                distance_match=buyer.get("_geo_message", "Location match"),
-                seller_trust=format_trust(sender_phone),
-                match_score=buyer.get("_match_score", 0),
-                match_reasons=match_reasons,
-            )
-
-            send_whatsapp_buttons(
-                buyer_phone,
-                buyer_message,
-                [
-                    {"id": "buyer_interested", "title": "Interested"},
-                    {"id": "buyer_not_interested", "title": "Not Interested"},
-                ],
+            send_match_alert_to_buyer(
+                buyer_phone=buyer_phone,
+                seller_phone=sender_phone,
+                listing=listing,
+                match_data=buyer,
             )
 
             sent_alerts.append({
@@ -479,12 +547,14 @@ async def receive_message(request: Request):
                 "deal": deal,
             })
 
+        total_sent = len(sent_alerts) + active_match_count
+
         send_whatsapp_message(
             sender_phone,
             translate(
                 sender_phone,
                 "listing_saved_with_matches",
-                match_count=len(sent_alerts),
+                match_count=total_sent,
             ),
         )
 
@@ -492,6 +562,7 @@ async def receive_message(request: Request):
             "status": "saved",
             "listing": listing,
             "matches": matches,
+            "active_request_matches": active_match_count,
             "alerts_sent": sent_alerts,
         }
 

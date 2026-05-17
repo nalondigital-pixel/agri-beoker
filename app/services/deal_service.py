@@ -22,6 +22,31 @@ def create_deal(listing_id, buyer, seller_phone=None):
     return None
 
 
+def create_deal_between_requests(new_listing, existing_listing):
+    if new_listing.get("intent") == "sell":
+        seller_phone = new_listing.get("seller_phone")
+        buyer_phone = existing_listing.get("seller_phone")
+        listing_id = new_listing.get("id")
+    else:
+        seller_phone = existing_listing.get("seller_phone")
+        buyer_phone = new_listing.get("seller_phone")
+        listing_id = existing_listing.get("id")
+
+    response = supabase.table("deals").insert({
+        "listing_id": listing_id,
+        "buyer_phone": buyer_phone,
+        "seller_phone": seller_phone,
+        "status": "buyer_alerted",
+        "buyer_decision": "pending",
+        "seller_decision": "pending",
+    }).execute()
+
+    if response.data:
+        return response.data[0]
+
+    return None
+
+
 def find_pending_deal_by_buyer_phone(phone):
     response = (
         supabase.table("deals")

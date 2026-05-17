@@ -13,6 +13,7 @@ def save_listing(data):
         "confidence": data.get("confidence"),
         "raw_message": data.get("raw", ""),
         "seller_phone": data.get("seller_phone"),
+        "status": "active",
     }).execute()
 
     if response.data:
@@ -34,3 +35,31 @@ def get_listing_by_id(listing_id):
         return response.data[0]
 
     return None
+
+
+def get_active_opposite_listings(intent: str):
+    opposite_intent = "buy" if intent == "sell" else "sell"
+
+    response = (
+        supabase.table("listings")
+        .select("*")
+        .eq("status", "active")
+        .eq("intent", opposite_intent)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    return response.data or []
+
+
+def mark_listing_matched(listing_id):
+    response = (
+        supabase.table("listings")
+        .update({
+            "status": "matched",
+        })
+        .eq("id", listing_id)
+        .execute()
+    )
+
+    return response.data

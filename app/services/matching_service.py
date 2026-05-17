@@ -16,47 +16,47 @@ def normalize_number(value):
         return 0
 
 
-def commodity_matches(listing_commodity, buyer_commodity):
-    listing_commodity = normalize_text(listing_commodity)
-    buyer_commodity = normalize_text(buyer_commodity)
+def commodity_matches(item_a, item_b):
+    item_a = normalize_text(item_a)
+    item_b = normalize_text(item_b)
 
-    if not listing_commodity or not buyer_commodity:
+    if not item_a or not item_b:
         return False
 
     return (
-        listing_commodity == buyer_commodity
-        or listing_commodity in buyer_commodity
-        or buyer_commodity in listing_commodity
+        item_a == item_b
+        or item_a in item_b
+        or item_b in item_a
     )
 
 
-def unit_score(listing_unit, buyer_unit):
-    listing_unit = normalize_text(listing_unit)
-    buyer_unit = normalize_text(buyer_unit)
+def unit_score(unit_a, unit_b):
+    unit_a = normalize_text(unit_a)
+    unit_b = normalize_text(unit_b)
 
-    if not listing_unit or not buyer_unit:
+    if not unit_a or not unit_b:
         return 5, "Unit flexible"
 
-    if listing_unit == buyer_unit:
+    if unit_a == unit_b:
         return 10, "Same unit"
 
     return 0, "Different unit"
 
 
-def quantity_score(listing_quantity, buyer_quantity):
-    listing_quantity = normalize_number(listing_quantity)
-    buyer_quantity = normalize_number(buyer_quantity)
+def quantity_score(new_quantity, existing_quantity):
+    new_quantity = normalize_number(new_quantity)
+    existing_quantity = normalize_number(existing_quantity)
 
-    if not listing_quantity or not buyer_quantity:
+    if not new_quantity or not existing_quantity:
         return 5, "Quantity flexible"
 
-    if buyer_quantity >= listing_quantity:
-        return 15, "Buyer can take full quantity"
+    if existing_quantity >= new_quantity:
+        return 15, "Quantity compatible"
 
-    if buyer_quantity >= listing_quantity * 0.5:
-        return 8, "Buyer can take partial quantity"
+    if existing_quantity >= new_quantity * 0.5:
+        return 8, "Partial quantity compatible"
 
-    return 0, "Buyer quantity too low"
+    return 0, "Quantity too low"
 
 
 def geo_score(geo_info):
@@ -77,7 +77,7 @@ def geo_score(geo_info):
     return 0
 
 
-def trust_score(buyer):
+def trust_score_from_buyer(buyer):
     score = 0
     reasons = []
 
@@ -100,13 +100,14 @@ def trust_score(buyer):
 
 
 def calculate_match_score(listing, buyer):
+    """
+    Existing buyer table matching.
+    Used for old buyer records.
+    """
     reasons = []
     score = 0
 
-    listing_commodity = listing.get("commodity")
-    buyer_commodity = buyer.get("commodity")
-
-    if not commodity_matches(listing_commodity, buyer_commodity):
+    if not commodity_matches(listing.get("commodity"), buyer.get("commodity")):
         return 0, ["Commodity does not match"], None
 
     score += 50
@@ -120,8 +121,7 @@ def calculate_match_score(listing, buyer):
     if not geo_info.get("compatible"):
         return 0, ["Location too far"], geo_info
 
-    location_points = geo_score(geo_info)
-    score += location_points
+    score += geo_score(geo_info)
     reasons.append(geo_info.get("message", "Location match"))
 
     q_score, q_reason = quantity_score(
@@ -138,7 +138,7 @@ def calculate_match_score(listing, buyer):
     score += u_score
     reasons.append(u_reason)
 
-    t_score, t_reasons = trust_score(buyer)
+    t_score, t_reasons = trust_score_from_buyer(buyer)
     score += t_score
     reasons.extend(t_reasons)
 
@@ -146,6 +146,10 @@ def calculate_match_score(listing, buyer):
 
 
 def find_matches(listing):
+    """
+    Matches a new sell request against old buyers table.
+    Keeps your existing buyer-table logic working.
+    """
     response = supabase.table("buyers").select("*").execute()
 
     buyers = response.data or []
@@ -166,6 +170,83 @@ def find_matches(listing):
 
     matches.sort(
         key=lambda buyer: buyer.get("_match_score") or 0,
+        reverse=True,
+    )
+
+    return matches
+
+
+def calculate_listing_to_listing_score(new_listing, existing_listing):
+    """
+    Matches active buy/sell listings against each other.
+    Example:
+    new sell request ↔ old buy request
+    new buy request ↔ old sell request
+    """
+    reasons = []
+    score = 0
+
+    if new_listing.get("intent") == existing_listing.get("intent"):
+        return 0, ["Same intent"], None
+
+    if not commodity_matches(
+        new_listing.get("commodity"),
+        existing_listing.get("commodity"),
+    ):
+        return 0, ["Commodity does not match"], None
+
+    score += 50
+    reasons.append("Commodity match")
+
+    geo_info = get_location_match_info(
+        new_listing.get("location"),
+        existing_listing.get("location"),
+    )
+
+    if not geo_info.get("compatible"):
+        return 0, ["Location too far"], geo_info
+
+    score += geo_score(geo_info)
+    reasons.append(geo_info.get("message", "Location match"))
+
+    q_score, q_reason = quantity_score(
+        new_listing.get("quantity"),
+        existing_listing.get("quantity"),
+    )
+    score += q_score
+    reasons.append(q_reason)
+
+    u_score, u_reason = unit_score(
+        new_listing.get("unit"),
+        existing_listing.get("unit"),
+    )
+    score += u_score
+    reasons.append(u_reason)
+
+    return score, reasons, geo_info
+
+
+def find_active_listing_matches(new_listing, active_opposite_listings):
+    matches = []
+
+    for existing_listing in active_opposite_listings:
+        score, reasons, geo_info = calculate_listing_to_listing_score(
+            new_listing,
+            existing_listing,
+        )
+
+        if score <= 0:
+            continue
+
+        existing_listing["_match_score"] = score
+        existing_listing["_match_reasons"] = reasons
+        existing_listing["_geo_match_type"] = geo_info.get("match_type") if geo_info else None
+        existing_listing["_geo_message"] = geo_info.get("message") if geo_info else "Location match"
+
+        matches.append(existing_listing)
+
+    matches.sort(
+        key=lambda item: item.get("_match_score") or 0,
         reverse=True,
     )
 
