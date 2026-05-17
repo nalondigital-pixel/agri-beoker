@@ -11,6 +11,7 @@ from app.services.matching_service import find_matches
 from app.services.whatsapp_service import send_whatsapp_message, send_whatsapp_buttons
 from app.services.media_service import get_media_url, download_media
 from app.services.transcription_service import transcribe_audio
+from app.services.session_service import get_session, set_session, clear_session
 from app.services.deal_service import (
     create_deal,
     find_pending_deal_by_buyer_phone,
@@ -55,6 +56,18 @@ def format_trust(phone: str):
     return f"🛡️ {trust_score}% {trust_rank} | Deals: {successful_deals}/{total_matches}"
 
 
+def show_main_menu(phone: str):
+    send_whatsapp_buttons(
+        phone,
+        "Welcome back 👋\n\nWhat do you want to do?",
+        [
+            {"id": "menu_buy", "title": "Buy"},
+            {"id": "menu_sell", "title": "Sell"},
+            {"id": "menu_deals", "title": "My Deals"},
+        ],
+    )
+
+
 def extract_incoming_message(message_data: dict):
     if "text" in message_data:
         return message_data["text"]["body"].strip()
@@ -93,11 +106,17 @@ def normalize_command(message: str):
     command_map = {
         "buyer_interested": "1",
         "buyer_not_interested": "2",
+
         "seller_share_contacts": "1",
         "seller_wait_better": "2",
         "seller_cancel": "3",
+
         "feedback_success": "1",
         "feedback_failed": "2",
+
+        "menu_buy": "menu_buy",
+        "menu_sell": "menu_sell",
+        "menu_deals": "menu_deals",
     }
 
     return command_map.get(message, message)
@@ -137,7 +156,7 @@ async def receive_message(request: Request):
         if incoming_message == "VOICE_TRANSCRIPTION_NOT_READY":
             send_whatsapp_message(
                 sender_phone,
-                "🎤 Voice note received, but voice transcription is not connected yet. Please type your listing for now.",
+                translate(sender_phone, "voice_not_ready"),
             )
             return {"status": "voice_received_not_transcribed"}
 
@@ -159,7 +178,54 @@ async def receive_message(request: Request):
         if not has_completed_registration(sender_phone):
             reply = handle_registration_message(sender_phone, incoming_message)
             send_whatsapp_message(sender_phone, reply)
+
+            if "Registration complete" in reply or "Wapedza kunyoresa" in reply or "Usuqedile ukubhalisa" in reply:
+                show_main_menu(sender_phone)
+
             return {"status": "registration_flow"}
+
+        if incoming_message.lower() in ["hi", "hello", "menu", "start", "help"]:
+            show_main_menu(sender_phone)
+            return {"status": "main_menu"}
+
+        if incoming_message == "menu_buy":
+        set_session(sender_phone, "create_buy_request", {})
+
+        send_whatsapp_message(
+            sender_phone,
+            translate(sender_phone, "buy_prompt"),
+        )
+
+        return {"status": "buy_flow_started"}
+
+    if incoming_message == "menu_sell":
+        set_session(sender_phone, "create_sell_listing", {})
+
+        send_whatsapp_message(
+            sender_phone,
+            translate(sender_phone, "sell_prompt"),
+        )
+
+        return {"status": "sell_flow_started"}
+
+    if incoming_message == "menu_deals":
+        send_whatsapp_message(
+            sender_phone,
+            translate(sender_phone, "deals_coming"),
+        )
+
+        return {"status": "deals_menu"}
+        session = get_session(sender_phone)
+
+        forced_intent = None
+
+        if session and session.get("current_step") == "create_buy_request":
+            forced_intent = "buy"
+            clear_session(sender_phone)
+
+        elif session and session.get("current_step") == "create_sell_listing":
+            forced_intent = "sell"
+            clear_session(sender_phone)
 
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
@@ -264,11 +330,8 @@ async def receive_message(request: Request):
             deal = find_pending_deal_by_buyer_phone(sender_phone)
 
             if not deal:
-                send_whatsapp_message(
-                    sender_phone,
-                    "No pending deal found for your number.",
-                )
-                return {"status": "no_pending_deal"}
+                show_main_menu(sender_phone)
+                return {"status": "no_pending_deal_show_menu"}
 
             listing = get_listing_by_id(deal.get("listing_id"))
 
@@ -327,6 +390,13 @@ async def receive_message(request: Request):
 
                 return {"status": "buyer_declined"}
 
+            show_main_menu(sender_phone)
+            return {"status": "no_pending_deal_show_menu"}
+
+        if not forced_intent:
+            show_main_menu(sender_phone)
+            return {"status": "menu_required_before_listing"}
+
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
@@ -340,6 +410,8 @@ async def receive_message(request: Request):
             incoming_message,
             reporter_phone=sender_phone,
         )
+
+        extracted["intent"] = forced_intent
         extracted["raw"] = incoming_message
         extracted["seller_phone"] = sender_phone
 

@@ -80,26 +80,17 @@ DONE_MESSAGES = {
     "english": """
 ✅ Registration complete, {name}.
 
-You now have 3 free daily listing tokens.
-
-You can send:
-"Ndine 4 mbudzi ku Kadoma"
+You can now use the menu to buy, sell, or check deals.
 """,
     "shona": """
 ✅ Wapedza kunyoresa, {name}.
 
-Une 3 free daily listing tokens.
-
-Unogona kutumira:
-"Ndine 4 mbudzi ku Kadoma"
+Munogona kushandisa menu kutenga, kutengesa, kana kuona madeals.
 """,
     "ndebele": """
 ✅ Usuqedile ukubhalisa, {name}.
 
-Ule 3 free daily listing tokens.
-
-Ungathumela:
-"Ndine 4 mbudzi ku Kadoma"
+Ungasebenzisa imenyu ukuthenga, ukuthengisa, kumbe ukuhlola ama-deals.
 """,
 }
 

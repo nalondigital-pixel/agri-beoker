@@ -2,44 +2,74 @@ from app.services.profile_service import get_profile
 
 
 MESSAGES = {
+    "voice_not_ready": {
+        "english": "🎤 Voice note received, but voice transcription is not connected yet. Please type your request for now.",
+        "shona": "🎤 Voice note yatambirwa, asi system haisati yagona kuinzwisisa. Ndapota nyorai zvamunoda parizvino.",
+        "ndebele": "🎤 I-voice note yamukelwe, kodwa system ayikakwazi ukuyiqonda. Sicela ubhale okufunayo okwamanje.",
+    },
+
+    "main_menu": {
+        "english": "Welcome back 👋\n\nWhat do you want to do?",
+        "shona": "Mauya zvakare 👋\n\nMunoda kuita chii?",
+        "ndebele": "Siyakwamukela futhi 👋\n\nUfuna ukwenzani?",
+    },
+
+    "buy_prompt": {
+        "english": "What do you want to buy?\n\nExample: 10 bags maize in Chegutu",
+        "shona": "Munoda kutenga chii?\n\nSemuenzaniso: 10 bags maize ku Chegutu",
+        "ndebele": "Ufuna ukuthenga ini?\n\nIsibonelo: 10 bags maize eChegutu",
+    },
+
+    "sell_prompt": {
+        "english": "What are you selling?\n\nExample: 4 goats in Kadoma",
+        "shona": "Muri kutengesa chii?\n\nSemuenzaniso: 4 mbudzi ku Kadoma",
+        "ndebele": "Uthengisa ini?\n\nIsibonelo: 4 mbudzi eKadoma",
+    },
+
+    "deals_coming": {
+        "english": "Deal checking is coming next. For now, wait for WhatsApp updates when buyers/sellers respond.",
+        "shona": "Kuona madeals kuri kuuya. Parizvino mirirai maWhatsApp updates kana vatengi/vatengesi vapindura.",
+        "ndebele": "Ukuhlola ama-deals kuyeza. Okwamanje linda amaWhatsApp updates nxa abathengi/abathengisi bephendula.",
+    },
+
     "listing_saved_with_matches": {
         "english": """
-✅ Listing saved.
+✅ Request saved.
 
-We found {match_count} possible buyer(s).
-We will notify you if a buyer shows interest.
+We found {match_count} possible match(es).
+We will notify you if someone shows interest.
 """,
         "shona": """
-✅ Listing yachengetwa.
+✅ Zvamakumbira zvachengetwa.
 
-Tawana vangangotenga {match_count}.
-Tichakuzivisai kana mutengi afarira.
+Tawana vangangowirirana newe {match_count}.
+Tichakuzivisai kana munhu afarira.
 """,
         "ndebele": """
-✅ I-listing igciniwe.
+✅ Isicelo sakho sigciniwe.
 
-Sithole abangathenga abangu-{match_count}.
-Sizakwazisa nxa umthengi etshengisa ukuthanda.
+Sithole abangafanelana lawe abangu-{match_count}.
+Sizakwazisa nxa umuntu etshengisa ukuthanda.
 """,
     },
 
     "listing_saved_no_matches": {
         "english": """
-✅ Listing saved.
+✅ Request saved.
 
-We do not have a matching buyer right now.
+We do not have a matching buyer/seller right now.
 We will notify you when we find one.
 """,
         "shona": """
-✅ Listing yachengetwa.
+✅ Zvamakumbira zvachengetwa.
 
-Parizvino hatina mutengi anoenderana nayo.
+Parizvino hatina munhu anoenderana nazvo.
 Tichakuzivisai kana tawana.
 """,
         "ndebele": """
-✅ I-listing igciniwe.
+✅ Isicelo sakho sigciniwe.
 
-Okwamanje asikatholi umthengi ofanelanayo.
+Okwamanje asikatholi umuntu ofanelanayo.
 Sizakwazisa nxa simtholile.
 """,
     },
@@ -57,37 +87,35 @@ Why: {match_reasons}
 
 Seller Trust: {seller_trust}
 
-Reply:
-✅ 1 = Interested
-❌ 2 = Not interested
+Choose an option below.
 """,
         "shona": """
 🚜 AGRI MATCH ALERT 🚜
 
 Chinhu: {commodity}
 Huwandu: {quantity}
-Nzvimbo yemutengesi: {location}
+Nzvimbo: {location}
 Kuswedera kwenzvimbo: {distance_match}
+Match Score: {match_score}%
+Chikonzero: {match_reasons}
 
-Trust yemutengesi: {seller_trust}
+Trust: {seller_trust}
 
-Pindura:
-✅ 1 = Ndinofarira
-❌ 2 = Handifariri
+Sarudzai pazasi.
 """,
         "ndebele": """
 🚜 AGRI MATCH ALERT 🚜
 
 Impahla: {commodity}
 Inani: {quantity}
-Indawo yomthengisi: {location}
+Indawo: {location}
 Ukusondelana kwendawo: {distance_match}
+Match Score: {match_score}%
+Isizatho: {match_reasons}
 
-Trust yomthengisi: {seller_trust}
+Trust: {seller_trust}
 
-Phendula:
-✅ 1 = Ngiyafuna
-❌ 2 = Angifuni
+Khetha ngezansi.
 """,
     },
 
@@ -95,62 +123,56 @@ Phendula:
         "english": """
 ✅ Interest received.
 
-We are asking the seller to approve contact sharing.
+We are asking the other person to approve contact sharing.
 """,
         "shona": """
 ✅ Tawana kuti munofarira.
 
-Tiri kukumbira mutengesi abvumire kugoverana manumber.
+Tiri kukumbira mumwe munhu abvumire kugoverana manumber.
 """,
         "ndebele": """
 ✅ Sithole ukuthi uyafuna.
 
-Sicela umthengisi avume ukwabelana ngezinombolo.
+Sicela omunye umuntu avume ukwabelana ngezinombolo.
 """,
+    },
+
+    "buyer_declined": {
+        "english": "✅ Noted. We will not continue with this match.",
+        "shona": "✅ Zvanzwisiswa. Hatichazoendereri mberi ne match iyi.",
+        "ndebele": "✅ Kuzwakale. Asisayikuqhubeka ngale match.",
     },
 
     "seller_approval_prompt": {
         "english": """
-📢 BUYER INTEREST
+📢 MATCH INTEREST
 
-Buyer: {buyer_name}
+Person interested: {buyer_name}
 Commodity: {commodity}
 Quantity: {quantity}
 Location: {location}
 
 What do you want to do?
-
-✅ 1 = Share contacts now
-⏳ 2 = Wait for better offer
-❌ 3 = Cancel this deal
 """,
         "shona": """
-📢 MUTENGI AFARIRA
+📢 MUNHU AFARIRA
 
-Mutengi: {buyer_name}
+Munhu afarira: {buyer_name}
 Chinhu: {commodity}
 Huwandu: {quantity}
 Nzvimbo: {location}
 
 Munoda kuita sei?
-
-✅ 1 = Goveranai manumber izvozvi
-⏳ 2 = Mirira offer iri nani
-❌ 3 = Kanzura deal iyi
 """,
         "ndebele": """
-📢 UMTHENGI UYAFUNA
+📢 UMUNTU UYAFUNA
 
-Umthengi: {buyer_name}
+Ofunayo: {buyer_name}
 Impahla: {commodity}
 Inani: {quantity}
 Indawo: {location}
 
 Ufuna ukwenzani?
-
-✅ 1 = Yabelana ngezinombolo khathesi
-⏳ 2 = Linda enye i-offer engcono
-❌ 3 = Khansela le deal
 """,
     },
 
@@ -158,38 +180,38 @@ Ufuna ukwenzani?
         "english": """
 ✅ DEAL APPROVED
 
-Seller: {seller_name}
-Seller contact: {seller_phone}
+Contact: {seller_name}
+Phone: {seller_phone}
 
 Commodity: {commodity}
 Quantity: {quantity}
 Location: {location}
 
-Please contact the seller to arrange payment/collection.
+Please contact them to arrange payment/collection.
 """,
         "shona": """
 ✅ DEAL YABVUMIRWA
 
-Mutengesi: {seller_name}
-Nhamba yemutengesi: {seller_phone}
+Munhu: {seller_name}
+Nhamba: {seller_phone}
 
 Chinhu: {commodity}
 Huwandu: {quantity}
 Nzvimbo: {location}
 
-Batai mutengesi kuti muronge kubhadhara/kutora.
+Batai munhu uyu kuti muronge kubhadhara/kutora.
 """,
         "ndebele": """
 ✅ IDEAL IVUNYIWE
 
-Umthengisi: {seller_name}
-Inombolo yomthengisi: {seller_phone}
+Umuntu: {seller_name}
+Inombolo: {seller_phone}
 
 Impahla: {commodity}
 Inani: {quantity}
 Indawo: {location}
 
-Xhumana lomthengisi ukuze lihlele ukukhokha/ukulanda.
+Xhumana laye ukuze lihlele ukukhokha/ukulanda.
 """,
     },
 
@@ -197,45 +219,45 @@ Xhumana lomthengisi ukuze lihlele ukukhokha/ukulanda.
         "english": """
 ✅ CONTACT SHARED
 
-Buyer: {buyer_name}
-Buyer contact: {buyer_phone}
+Contact: {buyer_name}
+Phone: {buyer_phone}
 
 Commodity: {commodity}
 Quantity: {quantity}
 Location: {location}
 
-Please contact the buyer to complete the deal.
+Please contact them to complete the deal.
 """,
         "shona": """
 ✅ MANUMBER AGOVERANWA
 
-Mutengi: {buyer_name}
-Nhamba yemutengi: {buyer_phone}
+Munhu: {buyer_name}
+Nhamba: {buyer_phone}
 
 Chinhu: {commodity}
 Huwandu: {quantity}
 Nzvimbo: {location}
 
-Batai mutengi kuti mupedzise deal.
+Batai munhu uyu kuti mupedzise deal.
 """,
         "ndebele": """
 ✅ IZINOMBOLO ZABELWE
 
-Umthengi: {buyer_name}
-Inombolo yomthengi: {buyer_phone}
+Umuntu: {buyer_name}
+Inombolo: {buyer_phone}
 
 Impahla: {commodity}
 Inani: {quantity}
 Indawo: {location}
 
-Xhumana lomthengi ukuze liqedele i-deal.
+Xhumana laye ukuze liqedele i-deal.
 """,
     },
 
     "seller_waiting_better_offer": {
-        "english": "✅ Noted. We will keep this listing active and look for a better match.",
-        "shona": "✅ Zvanzwisiswa. Tichasiya listing iyi iripo tichitsvaga mutengi ari nani.",
-        "ndebele": "✅ Kuzwakale. Sizagcina i-listing ikhona sisadinga umthengi ongcono.",
+        "english": "✅ Noted. We will keep this request active and look for a better match.",
+        "shona": "✅ Zvanzwisiswa. Tichasiya chikumbiro ichi chiripo tichitsvaga match iri nani.",
+        "ndebele": "✅ Kuzwakale. Sizagcina isicelo lesi sikhona sisadinga match engcono.",
     },
 
     "seller_cancelled_deal": {
@@ -245,9 +267,9 @@ Xhumana lomthengi ukuze liqedele i-deal.
     },
 
     "daily_limit_reached": {
-        "english": "You have reached today's listing limit. Please try again tomorrow.",
-        "shona": "Masvika palimit yemalisting yanhasi. Edzai zvakare mangwana.",
-        "ndebele": "Usufike kulimit yama-listing yanamuhla. Zama futhi kusasa.",
+        "english": "You have reached today's request limit. Please try again tomorrow.",
+        "shona": "Masvika palimit yezvikumbiro zvanhasi. Edzai zvakare mangwana.",
+        "ndebele": "Usufike kulimit yezicelo zanamuhla. Zama futhi kusasa.",
     },
 
     "invalid_report_format": {
@@ -266,30 +288,30 @@ Xhumana lomthengi ukuze liqedele i-deal.
         "english": """
 Did you finish the trade for {commodity}? 🧐
 
-Press:
-✅ 1 = Yes, trade was successful
-⚠️ 2 = No, the other person did not come
+Choose below:
+✅ Successful
+⚠️ Problem
 """,
         "shona": """
 Makapedza trade ye {commodity} here? 🧐
 
-Dzvanyai:
-✅ 1 = Ehe, trade yakabudirira
-⚠️ 2 = Kwete, mumwe munhu haana kuuya
+Sarudzai pazasi:
+✅ Yakabudirira
+⚠️ Pane problem
 """,
         "ndebele": """
 Liqedile i-trade ye {commodity}? 🧐
 
-Cindezela:
-✅ 1 = Yebo, i-trade iphumelele
-⚠️ 2 = Hatshi, omunye umuntu kafikanga
+Khetha ngezansi:
+✅ Iphumelele
+⚠️ Kube leproblem
 """,
     },
 
     "feedback_invalid": {
-        "english": "Please reply 1 if trade was successful, or 2 if the other person did not come.",
-        "shona": "Pindurai 1 kana trade yakabudirira, kana 2 kana mumwe munhu asina kuuya.",
-        "ndebele": "Phendula 1 nxa i-trade iphumelele, kumbe 2 nxa omunye umuntu engafikanga.",
+        "english": "Please choose Successful or Problem.",
+        "shona": "Ndapota sarudzai Yakabudirira kana Problem.",
+        "ndebele": "Sicela ukhethe Iphumelele kumbe Problem.",
     },
 
     "feedback_success": {
