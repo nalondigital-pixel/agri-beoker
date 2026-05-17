@@ -66,7 +66,10 @@ def geo_score(geo_info):
         return 25
 
     if match_type == "nearby":
-        return 18
+        return 20
+
+    if match_type == "within_80km":
+        return 16
 
     if match_type == "same_province":
         return 10
