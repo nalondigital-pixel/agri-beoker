@@ -12,11 +12,16 @@ WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# AI
+# Old AI / optional
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
 SAMBANOVA_BASE_URL = os.getenv("SAMBANOVA_BASE_URL")
 
+# Gemini AI
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 # Dashboard
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
-DEV_BYPASS_PHONE = os.getenv("DEV_BYPASS_PHONE")
+
+# Cron
 CRON_SECRET = os.getenv("CRON_SECRET")

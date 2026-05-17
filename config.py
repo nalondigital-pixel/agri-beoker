@@ -1,24 +1,27 @@
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
-# Load variables from the .env file into the program environment
 load_dotenv()
 
-print("CONFIG LOADED SUCCESSFULLY")
-# OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# WhatsApp
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
 
 # Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# WhatsApp Cloud API
-WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
-WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+# Old AI / optional
+SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
+SAMBANOVA_BASE_URL = os.getenv("SAMBANOVA_BASE_URL")
 
-# Africa's Talking
-AFRICASTALKING_API_KEY = os.getenv("AFRICASTALKING_API_KEY")
-AFRICASTALKING_USERNAME = os.getenv("AFRICASTALKING_USERNAME")
+# Gemini AI
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+# Dashboard
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+
+# Cron
+CRON_SECRET = os.getenv("CRON_SECRET")
