@@ -5,7 +5,7 @@ from app.config import WHATSAPP_VERIFY_TOKEN
 from app.services.ai_extractor import extract_market_data
 from app.services.db_service import save_listing, get_listing_by_id
 from app.services.matching_service import find_matches
-from app.services.whatsapp_service import send_whatsapp_message, send_whatsapp_buttons
+
 from app.services.deal_service import (
     create_deal,
     find_pending_deal_by_buyer_phone,
