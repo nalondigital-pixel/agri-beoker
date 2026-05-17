@@ -15,16 +15,16 @@ MESSAGES = {
     },
 
     "buy_prompt": {
-        "english": "What do you want to buy?\n\nExample: 10 bags maize in Chegutu",
-        "shona": "Munoda kutenga chii?\n\nSemuenzaniso: 10 bags maize ku Chegutu",
-        "ndebele": "Ufuna ukuthenga ini?\n\nIsibonelo: 10 bags maize eChegutu",
-    },
+    "english": "What do you want to buy?\n\nExample: 15 kg beef in Rimuka, Kadoma",
+    "shona": "Munoda kutenga chii?\n\nSemuenzaniso: 15 kg beef ku Rimuka, Kadoma",
+    "ndebele": "Ufuna ukuthenga ini?\n\nIsibonelo: 15 kg beef eRimuka, Kadoma",
+},
 
     "sell_prompt": {
-        "english": "What are you selling?\n\nExample: 4 goats in Kadoma",
-        "shona": "Muri kutengesa chii?\n\nSemuenzaniso: 4 mbudzi ku Kadoma",
-        "ndebele": "Uthengisa ini?\n\nIsibonelo: 4 mbudzi eKadoma",
-    },
+    "english": "What are you selling?\n\nExample: 20 kg beef in Rimuka, Kadoma",
+    "shona": "Muri kutengesa chii?\n\nSemuenzaniso: 20 kg beef ku Rimuka, Kadoma",
+    "ndebele": "Uthengisa ini?\n\nIsibonelo: 20 kg beef eRimuka, Kadoma",
+},
 
     "deals_coming": {
         "english": "Deal checking is coming next. For now, wait for WhatsApp updates when buyers/sellers respond.",

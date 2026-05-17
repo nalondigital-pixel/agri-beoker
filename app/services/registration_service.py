@@ -9,7 +9,7 @@ LANGUAGE_OPTIONS = {
 
     "2": "shona",
     "shona": "shona",
-    "chiShona".lower(): "shona",
+    "chishona": "shona",
 
     "3": "ndebele",
     "ndebele": "ndebele",
@@ -36,9 +36,16 @@ NAME_PROMPTS = {
 
 
 CITY_PROMPTS = {
-    "english": "Which city/town/area are you in?\n\nExample: Kadoma",
-    "shona": "Muri kuguta kana nzvimbo ipi?\n\nSemuenzaniso: Kadoma",
-    "ndebele": "Ukukuphi idolobho/indawo?\n\nIsibonelo: Kadoma",
+    "english": "Which city/town are you in?\n\nExample: Kadoma",
+    "shona": "Muri kuguta kana town ipi?\n\nSemuenzaniso: Kadoma",
+    "ndebele": "Ukuliphi idolobho/town?\n\nIsibonelo: Kadoma",
+}
+
+
+AREA_PROMPTS = {
+    "english": "Which area/neighborhood?\n\nExample: Rimuka",
+    "shona": "Muri kuarea/neighborhood ipi?\n\nSemuenzaniso: Rimuka",
+    "ndebele": "Ukweyiphi indawo/neighborhood?\n\nIsibonelo: Rimuka",
 }
 
 
@@ -133,6 +140,19 @@ def handle_registration_message(phone: str, message: str):
             return CITY_PROMPTS.get(language, CITY_PROMPTS["english"])
 
         temp_data["city"] = city
+        set_session(phone, "enter_area", temp_data)
+
+        language = temp_data.get("language", "english")
+        return AREA_PROMPTS.get(language, AREA_PROMPTS["english"])
+
+    if current_step == "enter_area":
+        neighborhood = message.strip()
+
+        if len(neighborhood) < 2:
+            language = temp_data.get("language", "english")
+            return AREA_PROMPTS.get(language, AREA_PROMPTS["english"])
+
+        temp_data["neighborhood"] = neighborhood
         set_session(phone, "agree_terms", temp_data)
 
         return "__SHOW_RULES_AGREE_BUTTON__"
@@ -146,12 +166,14 @@ def handle_registration_message(phone: str, message: str):
         language = temp_data.get("language", "english")
         name = temp_data.get("name", "User")
         city = temp_data.get("city")
+        neighborhood = temp_data.get("neighborhood")
 
         update_profile(phone, {
             "name": name,
             "language": language,
             "role": "both",
             "city": city,
+            "neighborhood": neighborhood,
             "agreed_terms": True,
             "trust_score": 25,
             "trust_rank": "New User",

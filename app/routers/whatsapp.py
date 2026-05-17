@@ -71,6 +71,45 @@ def format_trust(phone: str):
     return f"🛡️ {trust_score}% {trust_rank} | Deals: {successful_deals}/{total_matches}"
 
 
+def format_quantity(listing: dict):
+    quantity = listing.get("quantity")
+    unit = listing.get("unit")
+
+    if quantity is None:
+        return "Not specified"
+
+    try:
+        quantity_number = float(quantity)
+
+        if quantity_number.is_integer():
+            quantity = int(quantity_number)
+        else:
+            quantity = quantity_number
+
+    except (TypeError, ValueError):
+        pass
+
+    if unit:
+        return f"{quantity} {unit}"
+
+    return str(quantity)
+
+
+def format_location(listing: dict):
+    location = listing.get("location") or "Unknown location"
+
+    return str(location).title()
+
+
+def format_chat_link(phone: str):
+    if not phone:
+        return "Not available"
+
+    clean_phone = str(phone).replace("+", "").replace(" ", "").strip()
+
+    return f"https://wa.me/{clean_phone}"
+
+
 def show_main_menu(phone: str):
     send_whatsapp_buttons(
         phone,
@@ -146,8 +185,8 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
         buyer_phone,
         "buyer_match_alert",
         commodity=listing.get("commodity"),
-        quantity=listing.get("quantity"),
-        location=listing.get("location"),
+        quantity=format_quantity(listing),
+        location=format_location(listing),
         distance_match=match_data.get("_geo_message", "Location match"),
         seller_trust=format_trust(seller_phone),
         match_score=match_data.get("_match_score", 0),
@@ -397,6 +436,9 @@ async def receive_message(request: Request):
                 seller_name = get_display_name(seller_phone)
                 buyer_name = get_display_name(buyer_phone)
 
+                buyer_chat_link = format_chat_link(seller_phone)
+                seller_chat_link = format_chat_link(buyer_phone)
+
                 send_whatsapp_message(
                     buyer_phone,
                     translate(
@@ -405,9 +447,10 @@ async def receive_message(request: Request):
                         seller_name=seller_name,
                         seller_phone=seller_phone,
                         commodity=listing.get("commodity"),
-                        quantity=listing.get("quantity"),
-                        location=listing.get("location"),
-                    ),
+                        quantity=format_quantity(listing),
+                        location=format_location(listing),
+                    )
+                    + f"\n\nChat with seller:\n{buyer_chat_link}",
                 )
 
                 send_whatsapp_message(
@@ -418,9 +461,10 @@ async def receive_message(request: Request):
                         buyer_name=buyer_name,
                         buyer_phone=buyer_phone,
                         commodity=listing.get("commodity"),
-                        quantity=listing.get("quantity"),
-                        location=listing.get("location"),
-                    ),
+                        quantity=format_quantity(listing),
+                        location=format_location(listing),
+                    )
+                    + f"\n\nChat with buyer:\n{seller_chat_link}",
                 )
 
                 return {"status": "deal_confirmed_by_seller"}
@@ -481,8 +525,8 @@ async def receive_message(request: Request):
                 "seller_approval_prompt",
                 buyer_name=buyer_name,
                 commodity=listing.get("commodity"),
-                quantity=listing.get("quantity"),
-                location=listing.get("location"),
+                quantity=format_quantity(listing),
+                location=format_location(listing),
             )
 
             send_whatsapp_buttons(

@@ -31,6 +31,21 @@ def normalize_number(value):
         return 0
 
 
+def format_quantity_value(quantity, unit=None):
+    quantity = normalize_number(quantity)
+
+    if quantity == 0:
+        return "unknown quantity"
+
+    if quantity.is_integer():
+        quantity = int(quantity)
+
+    if unit:
+        return f"{quantity} {unit}"
+
+    return str(quantity)
+
+
 def commodity_matches(item_a, item_b):
     item_a = normalize_text(item_a)
     item_b = normalize_text(item_b)
@@ -61,42 +76,54 @@ def unit_score(unit_a, unit_b):
     if unit_a == unit_b:
         return 10, "Same unit"
 
-    return 3, "Different unit but still possible"
+    return 3, f"Different units: seller has {unit_a}, buyer asked for {unit_b}"
 
 
-def buyer_table_quantity_score(seller_quantity, buyer_quantity):
+def buyer_table_quantity_score(seller_quantity, buyer_quantity, seller_unit=None, buyer_unit=None):
     seller_quantity = normalize_number(seller_quantity)
     buyer_quantity = normalize_number(buyer_quantity)
+
+    seller_text = format_quantity_value(seller_quantity, seller_unit)
+    buyer_text = format_quantity_value(buyer_quantity, buyer_unit)
 
     if not seller_quantity or not buyer_quantity:
         return 5, "Quantity flexible"
 
-    if seller_quantity >= buyer_quantity:
-        return 15, "Seller quantity can satisfy buyer"
+    if seller_quantity == buyer_quantity:
+        return 15, f"Exact quantity match: {seller_text}"
+
+    if seller_quantity > buyer_quantity:
+        return 15, f"Seller has enough: {seller_text}, buyer wants {buyer_text}"
 
     if seller_quantity >= buyer_quantity * 0.5:
-        return 8, "Seller has partial quantity"
+        return 8, f"Partial quantity match: seller has {seller_text}, buyer wants {buyer_text}"
 
-    return 2, "Quantity may still be negotiable"
+    return 0, f"Quantity too low: seller has {seller_text}, buyer wants {buyer_text}"
 
 
 def listing_quantity_score(sell_listing, buy_listing):
     sell_quantity = normalize_number(sell_listing.get("quantity"))
     buy_quantity = normalize_number(buy_listing.get("quantity"))
 
+    sell_unit = sell_listing.get("unit")
+    buy_unit = buy_listing.get("unit")
+
+    seller_text = format_quantity_value(sell_quantity, sell_unit)
+    buyer_text = format_quantity_value(buy_quantity, buy_unit)
+
     if not sell_quantity or not buy_quantity:
         return 5, "Quantity flexible"
 
     if sell_quantity == buy_quantity:
-        return 15, "Exact quantity match"
+        return 15, f"Exact quantity match: {seller_text}"
 
-    if sell_quantity >= buy_quantity:
-        return 15, "Seller has enough quantity"
+    if sell_quantity > buy_quantity:
+        return 15, f"Seller has enough: {seller_text}, buyer wants {buyer_text}"
 
     if sell_quantity >= buy_quantity * 0.5:
-        return 8, "Seller has partial quantity"
+        return 8, f"Partial quantity match: seller has {seller_text}, buyer wants {buyer_text}"
 
-    return 2, "Quantity may still be negotiable"
+    return 0, f"Quantity too low: seller has {seller_text}, buyer wants {buyer_text}"
 
 
 def geo_score(geo_info):
@@ -163,9 +190,14 @@ def calculate_match_score(listing, buyer):
     q_score, q_reason = buyer_table_quantity_score(
         listing.get("quantity"),
         buyer.get("quantity"),
+        listing.get("unit"),
+        buyer.get("unit"),
     )
     score += q_score
     reasons.append(q_reason)
+
+    if q_score <= 0:
+        return 0, reasons, geo_info
 
     u_score, u_reason = unit_score(
         listing.get("unit"),
@@ -256,6 +288,9 @@ def calculate_listing_to_listing_score(new_listing, existing_listing):
     q_score, q_reason = listing_quantity_score(sell_listing, buy_listing)
     score += q_score
     reasons.append(q_reason)
+
+    if q_score <= 0:
+        return 0, reasons, geo_info
 
     u_score, u_reason = unit_score(
         sell_listing.get("unit"),
