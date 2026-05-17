@@ -299,7 +299,9 @@ async def receive_message(request: Request):
             if not deal:
                 continue
 
-            buyer_message = translate(
+        match_reasons = ", ".join(buyer.get("_match_reasons", []))
+
+        buyer_message = translate(
                 buyer_phone,
                 "buyer_match_alert",
                 commodity=extracted.get("commodity"),
@@ -307,11 +309,13 @@ async def receive_message(request: Request):
                 location=extracted.get("location"),
                 distance_match=buyer.get("_geo_message", "Location match"),
                 seller_trust=format_trust(sender_phone),
+                match_score=buyer.get("_match_score", 0),
+                match_reasons=match_reasons,
             )
 
-            send_whatsapp_message(buyer_phone, buyer_message)
+        send_whatsapp_message(buyer_phone, buyer_message)
 
-            sent_alerts.append({
+        sent_alerts.append({
                 "buyer": buyer,
                 "deal": deal,
             })

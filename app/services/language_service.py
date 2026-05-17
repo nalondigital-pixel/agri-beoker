@@ -52,6 +52,8 @@ Commodity: {commodity}
 Quantity: {quantity}
 Seller Location: {location}
 Distance Match: {distance_match}
+Match Score: {match_score}%
+Why: {match_reasons}
 
 Seller Trust: {seller_trust}
 
