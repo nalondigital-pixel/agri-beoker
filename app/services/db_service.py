@@ -16,6 +16,11 @@ def save_listing(data):
         "raw_message": data.get("raw", ""),
         "seller_phone": data.get("seller_phone"),
         "status": "active",
+
+        # Price intelligence fields
+        "price": data.get("price"),
+        "currency": data.get("currency") or "USD",
+        "price_per_unit": data.get("price_per_unit"),
     }).execute()
 
     if response.data:
@@ -87,7 +92,7 @@ def mark_listing_matched(listing_id):
 
 
 def close_listing(listing_id, phone: str, status: str):
-    allowed_statuses = ["cancelled", "fulfilled", "closed"]
+    allowed_statuses = ["cancelled", "fulfilled", "closed", "expired"]
 
     if status not in allowed_statuses:
         return None

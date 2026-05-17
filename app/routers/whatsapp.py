@@ -103,6 +103,48 @@ def format_location(listing: dict):
     return str(location).title()
 
 
+def format_price_value(value):
+    if value is None:
+        return None
+
+    try:
+        number = float(value)
+
+        if number.is_integer():
+            return int(number)
+
+        return round(number, 2)
+
+    except Exception:
+        return value
+
+
+def format_price_line(listing: dict):
+    price = listing.get("price")
+    currency = listing.get("currency") or "USD"
+    price_per_unit = listing.get("price_per_unit")
+    unit = listing.get("unit")
+
+    lines = []
+
+    if price:
+        price_value = format_price_value(price)
+        lines.append(f"Price: {currency} {price_value}")
+
+    if price_per_unit:
+        ppu_value = format_price_value(price_per_unit)
+
+        if unit:
+            lines.append(f"Price per {unit}: {currency} {ppu_value}")
+        else:
+            lines.append(f"Price per unit: {currency} {ppu_value}")
+
+    if not lines:
+        return ""
+
+    return "\n".join(lines)
+
+
 def format_chat_link(phone: str):
     if not phone:
         return "Not available"
@@ -216,12 +258,19 @@ def build_listing_confirmation_message(extracted: dict):
     except Exception:
         confidence_percent = 0
 
+    price_text = format_price_line(extracted)
+    price_block = ""
+
+    if price_text:
+        price_block = f"{price_text}\n"
+
     return (
         "Please confirm what I understood:\n\n"
         f"Type: {intent}\n"
         f"Commodity: {commodity}\n"
         f"Quantity: {quantity}\n"
         f"Location: {location}\n"
+        f"{price_block}"
         f"AI Confidence: {confidence_percent}%\n\n"
         "Is this correct?"
     )
@@ -241,6 +290,12 @@ def send_listing_confirmation(phone: str, extracted: dict):
 def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
     match_reasons = ", ".join(match_data.get("_match_reasons", []))
 
+    price_text = format_price_line(listing)
+    price_extra = ""
+
+    if price_text:
+        price_extra = f"\n\n{price_text}"
+
     buyer_message = translate(
         buyer_phone,
         "buyer_match_alert",
@@ -252,6 +307,8 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
         match_score=match_data.get("_match_score", 0),
         match_reasons=match_reasons,
     )
+
+    buyer_message = buyer_message + price_extra
 
     send_whatsapp_buttons(
         buyer_phone,
@@ -330,14 +387,19 @@ def build_my_deals_message(phone: str):
         commodity = listing.get("commodity") or "Unknown commodity"
         quantity = format_quantity(listing)
         location = format_location(listing)
+        price_text = format_price_line(listing)
 
         deal_text = (
             f"{index}. {commodity}\n"
             f"Role: {role}\n"
             f"Quantity: {quantity}\n"
             f"Location: {location}\n"
-            f"Status: {status}"
         )
+
+        if price_text:
+            deal_text += f"{price_text}\n"
+
+        deal_text += f"Status: {status}"
 
         if deal.get("status") == "confirmed":
             if role == "Buyer":
@@ -357,13 +419,20 @@ def build_request_card(listing: dict):
     commodity = listing.get("commodity") or "Unknown commodity"
     quantity = format_quantity(listing)
     location = format_location(listing)
+    price_text = format_price_line(listing)
+
+    price_block = ""
+
+    if price_text:
+        price_block = f"{price_text}\n"
 
     return (
         f"📌 Active Request\n\n"
         f"Type: {intent}\n"
         f"Commodity: {commodity}\n"
         f"Quantity: {quantity}\n"
-        f"Location: {location}\n\n"
+        f"Location: {location}\n"
+        f"{price_block}\n"
         f"What do you want to do with this request?"
     )
 
@@ -859,6 +928,11 @@ async def receive_message(request: Request):
                 quantity=format_quantity(listing),
                 location=format_location(listing),
             )
+
+            price_text = format_price_line(listing)
+
+            if price_text:
+                seller_prompt += f"\n\n{price_text}"
 
             send_whatsapp_buttons(
                 seller_phone,

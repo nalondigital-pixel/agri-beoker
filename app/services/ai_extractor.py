@@ -30,6 +30,15 @@ EXTRACTION_SCHEMA = {
         "location": {
             "type": "string",
         },
+        "price": {
+            "type": "number",
+        },
+        "currency": {
+            "type": "string",
+        },
+        "price_per_unit": {
+            "type": "number",
+        },
         "confidence": {
             "type": "number",
         },
@@ -40,6 +49,9 @@ EXTRACTION_SCHEMA = {
         "quantity",
         "unit",
         "location",
+        "price",
+        "currency",
+        "price_per_unit",
         "confidence",
     ],
 }
@@ -97,17 +109,30 @@ Return only JSON with these fields:
 - quantity: numeric quantity only. If unknown, use 0.
 - unit: unit such as kg, bag, bags, crate, tonne, goat, cattle, bucket, dozen, or empty string if unknown
 - location: town/area/location. If unknown, use empty string
+- price: total price mentioned. If no price is mentioned, use 0.
+- currency: USD, ZIG, ZAR, or empty string if unknown. In Zimbabwe, "$" usually means USD.
+- price_per_unit: price divided by quantity when possible. If user says "$6 per bag", price_per_unit is 6. If impossible, use 0.
 - confidence: number from 0 to 1
 
+Important:
+- Do not confuse quantity with price.
+- If message says "20 kg beef for $80", quantity is 20, price is 80, price_per_unit is 4.
+- If message says "$6 per bag", price_per_unit is 6.
+- If message says "budget $25", treat price as 25.
+- If no price exists, price must be 0 and price_per_unit must be 0.
+
 Examples:
-Message: "Ndine 20 kgs dze beef ku Rimuka Kadoma"
-JSON: {{"intent":"sell","commodity":"beef","quantity":20,"unit":"kg","location":"Rimuka Kadoma","confidence":0.95}}
+Message: "Ndine 20 kgs dze beef ku Rimuka Kadoma for $80"
+JSON: {{"intent":"sell","commodity":"beef","quantity":20,"unit":"kg","location":"Rimuka Kadoma","price":80,"currency":"USD","price_per_unit":4,"confidence":0.95}}
 
-Message: "I want 10 bags maize in Chegutu"
-JSON: {{"intent":"buy","commodity":"maize","quantity":10,"unit":"bags","location":"Chegutu","confidence":0.95}}
+Message: "I want 10 bags maize in Chegutu budget $60"
+JSON: {{"intent":"buy","commodity":"maize","quantity":10,"unit":"bags","location":"Chegutu","price":60,"currency":"USD","price_per_unit":6,"confidence":0.95}}
 
-Message: "Looking for 4 goats near Kadoma"
-JSON: {{"intent":"buy","commodity":"goat","quantity":4,"unit":"","location":"Kadoma","confidence":0.9}}
+Message: "Selling maize Chegutu $6 per bag"
+JSON: {{"intent":"sell","commodity":"maize","quantity":0,"unit":"bags","location":"Chegutu","price":0,"currency":"USD","price_per_unit":6,"confidence":0.9}}
+
+Message: "Ngifuna 4 goats eKadoma"
+JSON: {{"intent":"buy","commodity":"goat","quantity":4,"unit":"","location":"Kadoma","price":0,"currency":"","price_per_unit":0,"confidence":0.9}}
 
 Message:
 {message}
@@ -137,6 +162,19 @@ Message:
         return None
 
 
+def safe_float(value, default=0):
+    try:
+        number = float(value or 0)
+
+        if number.is_integer():
+            return int(number)
+
+        return number
+
+    except Exception:
+        return default
+
+
 def normalize_extracted_payload(extracted: dict):
     if not extracted:
         return None
@@ -150,19 +188,22 @@ def normalize_extracted_payload(extracted: dict):
     unit = str(extracted.get("unit") or "").lower().strip()
     location = str(extracted.get("location") or "").lower().strip()
 
-    try:
-        quantity = float(extracted.get("quantity") or 0)
+    quantity = safe_float(extracted.get("quantity"), 0)
+    price = safe_float(extracted.get("price"), 0)
+    price_per_unit = safe_float(extracted.get("price_per_unit"), 0)
 
-        if quantity.is_integer():
-            quantity = int(quantity)
+    currency = str(extracted.get("currency") or "").upper().strip()
 
-    except Exception:
-        quantity = 0
+    if currency in ["$", "US$", "USDOLLAR", "USDOLLARS"]:
+        currency = "USD"
 
-    try:
-        confidence = float(extracted.get("confidence") or 0.7)
-    except Exception:
-        confidence = 0.7
+    if price and not currency:
+        currency = "USD"
+
+    if price and quantity and not price_per_unit:
+        price_per_unit = round(float(price) / float(quantity), 2)
+
+    confidence = safe_float(extracted.get("confidence"), 0.7)
 
     if confidence < 0:
         confidence = 0
@@ -178,6 +219,9 @@ def normalize_extracted_payload(extracted: dict):
         "unit": unit,
         "raw_quantity_text": f"{quantity} {unit}".strip() if quantity else "",
         "location": location,
+        "price": price if price else None,
+        "currency": currency or None,
+        "price_per_unit": price_per_unit if price_per_unit else None,
         "confidence": confidence,
     }
 
@@ -207,6 +251,10 @@ def extract_market_data(message: str, reporter_phone: str | None = None):
         message,
         reporter_phone=reporter_phone,
     )
+
+    fallback["price"] = None
+    fallback["currency"] = None
+    fallback["price_per_unit"] = None
 
     print("Fallback Extracted:", fallback)
 
