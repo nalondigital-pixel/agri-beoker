@@ -54,6 +54,7 @@ from app.services.message_dedupe_service import (
     has_processed_message,
     mark_message_processed,
 )
+from app.services.ai_assistant_service import generate_ai_assistant_reply
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -180,6 +181,27 @@ def show_main_menu(phone: str):
         ],
     )
 
+def show_ai_assistant_menu(phone: str, incoming_message: str):
+    profile = get_profile(phone) or {}
+
+    user_name = profile.get("name")
+    user_language = profile.get("language") or "english"
+
+    ai_reply = generate_ai_assistant_reply(
+        user_message=incoming_message,
+        user_name=user_name,
+        user_language=user_language,
+    )
+
+    send_whatsapp_buttons(
+        phone,
+        ai_reply,
+        [
+            {"id": "menu_buy", "title": "Buy"},
+            {"id": "menu_sell", "title": "Sell"},
+            {"id": "menu_deals", "title": "My Deals"},
+        ],
+    )
 
 def extract_incoming_message(message_data: dict):
     if "text" in message_data:
@@ -964,8 +986,12 @@ async def receive_message(request: Request):
             return {"status": "no_pending_deal_show_menu"}
 
         if not forced_intent:
-            show_main_menu(sender_phone)
-            return {"status": "menu_required_before_listing"}
+            show_ai_assistant_menu(sender_phone, incoming_message)
+
+        return {
+        "status": "ai_assistant_reply_sent",
+        "message": incoming_message,
+    }
 
         today_count = count_today_listings_by_seller(sender_phone)
 
