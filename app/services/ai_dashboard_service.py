@@ -76,7 +76,6 @@ def build_market_snapshot():
     ]
 
     avg_price_by_commodity = {}
-
     grouped_prices = {}
 
     for item in priced_items:
@@ -109,6 +108,32 @@ def build_market_snapshot():
         "top_locations": locations.most_common(10),
         "avg_price_by_commodity": avg_price_by_commodity,
     }
+
+
+def build_fallback_summary(snapshot: dict):
+    top_commodities = snapshot.get("top_commodities") or []
+    top_locations = snapshot.get("top_locations") or []
+
+    commodity_text = ", ".join(
+        [f"{name} ({count})" for name, count in top_commodities[:5]]
+    ) or "No active commodity data yet"
+
+    location_text = ", ".join(
+        [f"{name} ({count})" for name, count in top_locations[:5]]
+    ) or "No active location data yet"
+
+    return (
+        f"Marketplace summary:\n\n"
+        f"Active requests: {snapshot.get('active_requests', 0)}\n"
+        f"Sell requests: {snapshot.get('active_sell_requests', 0)}\n"
+        f"Buy requests: {snapshot.get('active_buy_requests', 0)}\n"
+        f"Confirmed deals: {snapshot.get('confirmed_deals', 0)}\n"
+        f"Untrusted queue items: {snapshot.get('untrusted_items', 0)}\n"
+        f"Fraud reports: {snapshot.get('fraud_reports', 0)}\n\n"
+        f"Top commodities: {commodity_text}\n"
+        f"Top locations: {location_text}\n\n"
+        f"Recommended action: review unmatched active requests, check untrusted items, and promote high-demand commodities."
+    )
 
 
 def generate_ai_market_summary():
@@ -165,29 +190,3 @@ Do not use markdown tables.
             "snapshot": snapshot,
             "summary": build_fallback_summary(snapshot),
         }
-
-
-def build_fallback_summary(snapshot: dict):
-    top_commodities = snapshot.get("top_commodities") or []
-    top_locations = snapshot.get("top_locations") or []
-
-    commodity_text = ", ".join(
-        [f"{name} ({count})" for name, count in top_commodities[:5]]
-    ) or "No active commodity data yet"
-
-    location_text = ", ".join(
-        [f"{name} ({count})" for name, count in top_locations[:5]]
-    ) or "No active location data yet"
-
-    return (
-        f"Marketplace summary:\n\n"
-        f"Active requests: {snapshot.get('active_requests', 0)}\n"
-        f"Sell requests: {snapshot.get('active_sell_requests', 0)}\n"
-        f"Buy requests: {snapshot.get('active_buy_requests', 0)}\n"
-        f"Confirmed deals: {snapshot.get('confirmed_deals', 0)}\n"
-        f"Untrusted queue items: {snapshot.get('untrusted_items', 0)}\n"
-        f"Fraud reports: {snapshot.get('fraud_reports', 0)}\n\n"
-        f"Top commodities: {commodity_text}\n"
-        f"Top locations: {location_text}\n\n"
-        f"Recommended action: review unmatched active requests, check untrusted items, and promote high-demand commodities."
-    )
