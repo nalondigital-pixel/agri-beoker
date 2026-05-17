@@ -11,6 +11,20 @@ def get_profile(phone: str):
         .limit(1)
         .execute()
     )
+def update_profile(phone: str, data: dict):
+    data["phone"] = phone
+
+    response = (
+        supabase.table("user_profiles")
+        .upsert(data, on_conflict="phone")
+        .execute()
+    )
+
+    if response.data:
+        return response.data[0]
+
+    return None
+
 
     if response.data:
         return response.data[0]
