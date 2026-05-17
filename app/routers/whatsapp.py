@@ -121,6 +121,7 @@ def format_deal_status(status: str):
         "cancelled": "Cancelled",
         "fulfilled": "Fulfilled",
         "closed": "Closed",
+        "expired": "Expired",
     }
 
     return status_map.get(status, status or "Unknown")
@@ -195,9 +196,46 @@ def normalize_command(message: str):
         "menu_buy": "menu_buy",
         "menu_sell": "menu_sell",
         "menu_deals": "menu_deals",
+
+        "confirm_listing": "confirm_listing",
+        "edit_listing": "edit_listing",
     }
 
     return command_map.get(message, message)
+
+
+def build_listing_confirmation_message(extracted: dict):
+    intent = (extracted.get("intent") or "unknown").upper()
+    commodity = extracted.get("commodity") or "Unknown commodity"
+    quantity = format_quantity(extracted)
+    location = format_location(extracted)
+    confidence = extracted.get("confidence", 0)
+
+    try:
+        confidence_percent = int(float(confidence) * 100)
+    except Exception:
+        confidence_percent = 0
+
+    return (
+        "Please confirm what I understood:\n\n"
+        f"Type: {intent}\n"
+        f"Commodity: {commodity}\n"
+        f"Quantity: {quantity}\n"
+        f"Location: {location}\n"
+        f"AI Confidence: {confidence_percent}%\n\n"
+        "Is this correct?"
+    )
+
+
+def send_listing_confirmation(phone: str, extracted: dict):
+    send_whatsapp_buttons(
+        phone,
+        build_listing_confirmation_message(extracted),
+        [
+            {"id": "confirm_listing", "title": "Confirm"},
+            {"id": "edit_listing", "title": "Edit"},
+        ],
+    )
 
 
 def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
@@ -421,6 +459,90 @@ def handle_request_action(phone: str, incoming_message: str):
     return False
 
 
+def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
+    listing = save_listing(extracted)
+
+    if not listing:
+        send_whatsapp_message(
+            sender_phone,
+            "Sorry, your request could not be saved. Please try again.",
+        )
+        return {
+            "status": "error",
+            "message": "Listing could not be saved",
+        }
+
+    print("\n========== SAVED LISTING ==========")
+    print(listing)
+
+    active_match_count = notify_active_request_matches(listing)
+
+    matches = []
+
+    if listing.get("intent") == "sell":
+        matches = find_matches(listing)
+
+    if not matches and active_match_count == 0:
+        send_whatsapp_message(
+            sender_phone,
+            translate(sender_phone, "listing_saved_no_matches"),
+        )
+
+        return {
+            "status": "listing_saved_no_matches",
+            "listing": listing,
+            "matches": [],
+        }
+
+    sent_alerts = []
+
+    for buyer in matches:
+        buyer_phone = buyer.get("phone")
+
+        if not buyer_phone:
+            continue
+
+        deal = create_deal(
+            listing_id=listing.get("id"),
+            buyer=buyer,
+            seller_phone=sender_phone,
+        )
+
+        if not deal:
+            continue
+
+        send_match_alert_to_buyer(
+            buyer_phone=buyer_phone,
+            seller_phone=sender_phone,
+            listing=listing,
+            match_data=buyer,
+        )
+
+        sent_alerts.append({
+            "buyer": buyer,
+            "deal": deal,
+        })
+
+    total_sent = len(sent_alerts) + active_match_count
+
+    send_whatsapp_message(
+        sender_phone,
+        translate(
+            sender_phone,
+            "listing_saved_with_matches",
+            match_count=total_sent,
+        ),
+    )
+
+    return {
+        "status": "saved",
+        "listing": listing,
+        "matches": matches,
+        "active_request_matches": active_match_count,
+        "alerts_sent": sent_alerts,
+    }
+
+
 @router.get("/")
 def verify_webhook(request: Request):
     params = request.query_params
@@ -518,6 +640,36 @@ async def receive_message(request: Request):
 
             return {"status": "registration_flow"}
 
+        session = get_session(sender_phone)
+
+        if session and session.get("current_step") == "confirm_listing":
+            temp_data = session.get("temp_data") or {}
+            pending_listing = temp_data.get("pending_listing") or {}
+            original_step = temp_data.get("original_step")
+
+            if incoming_message == "confirm_listing":
+                clear_session(sender_phone)
+                return save_confirmed_listing_and_match(sender_phone, pending_listing)
+
+            if incoming_message == "edit_listing":
+                if original_step == "create_buy_request":
+                    set_session(sender_phone, "create_buy_request", {})
+                    send_whatsapp_message(
+                        sender_phone,
+                        "Okay, please send the buy request again.\n\nExample: 15 kg beef in Rimuka, Kadoma",
+                    )
+                    return {"status": "edit_buy_listing"}
+
+                set_session(sender_phone, "create_sell_listing", {})
+                send_whatsapp_message(
+                    sender_phone,
+                    "Okay, please send the sell request again.\n\nExample: 20 kg beef in Rimuka, Kadoma",
+                )
+                return {"status": "edit_sell_listing"}
+
+            send_listing_confirmation(sender_phone, pending_listing)
+            return {"status": "waiting_for_listing_confirmation"}
+
         if incoming_message.lower() in ["hi", "hello", "menu", "start", "help"]:
             show_main_menu(sender_phone)
             return {"status": "main_menu"}
@@ -555,17 +707,16 @@ async def receive_message(request: Request):
                 "active_requests": active_count,
             }
 
-        session = get_session(sender_phone)
-
         forced_intent = None
+        original_step = None
 
         if session and session.get("current_step") == "create_buy_request":
             forced_intent = "buy"
-            clear_session(sender_phone)
+            original_step = "create_buy_request"
 
         elif session and session.get("current_step") == "create_sell_listing":
             forced_intent = "sell"
-            clear_session(sender_phone)
+            original_step = "create_sell_listing"
 
         if incoming_message.lower().startswith("report "):
             parts = incoming_message.split(" ", 2)
@@ -763,79 +914,20 @@ async def receive_message(request: Request):
         print("\n========== EXTRACTED MARKET DATA ==========")
         print(extracted)
 
-        listing = save_listing(extracted)
-
-        if not listing:
-            return {"status": "error", "message": "Listing could not be saved"}
-
-        print("\n========== SAVED LISTING ==========")
-        print(listing)
-
-        active_match_count = notify_active_request_matches(listing)
-
-        matches = []
-
-        if forced_intent == "sell":
-            matches = find_matches(listing)
-
-        if not matches and active_match_count == 0:
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "listing_saved_no_matches"),
-            )
-
-            return {
-                "status": "listing_saved_no_matches",
-                "listing": listing,
-                "matches": [],
-            }
-
-        sent_alerts = []
-
-        for buyer in matches:
-            buyer_phone = buyer.get("phone")
-
-            if not buyer_phone:
-                continue
-
-            deal = create_deal(
-                listing_id=listing.get("id"),
-                buyer=buyer,
-                seller_phone=sender_phone,
-            )
-
-            if not deal:
-                continue
-
-            send_match_alert_to_buyer(
-                buyer_phone=buyer_phone,
-                seller_phone=sender_phone,
-                listing=listing,
-                match_data=buyer,
-            )
-
-            sent_alerts.append({
-                "buyer": buyer,
-                "deal": deal,
-            })
-
-        total_sent = len(sent_alerts) + active_match_count
-
-        send_whatsapp_message(
+        set_session(
             sender_phone,
-            translate(
-                sender_phone,
-                "listing_saved_with_matches",
-                match_count=total_sent,
-            ),
+            "confirm_listing",
+            {
+                "pending_listing": extracted,
+                "original_step": original_step,
+            },
         )
 
+        send_listing_confirmation(sender_phone, extracted)
+
         return {
-            "status": "saved",
-            "listing": listing,
-            "matches": matches,
-            "active_request_matches": active_match_count,
-            "alerts_sent": sent_alerts,
+            "status": "listing_confirmation_sent",
+            "extracted": extracted,
         }
 
     except Exception as e:
