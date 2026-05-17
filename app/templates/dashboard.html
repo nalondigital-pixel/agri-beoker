@@ -18,19 +18,10 @@
             padding: 22px 32px;
         }
 
-        header h1 {
-            margin: 0;
-            font-size: 26px;
-        }
+        header h1 { margin: 0; font-size: 26px; }
+        header p { margin: 6px 0 0; color: #d7eadc; }
 
-        header p {
-            margin: 6px 0 0;
-            color: #d7eadc;
-        }
-
-        main {
-            padding: 28px 32px;
-        }
+        main { padding: 28px 32px; }
 
         .stats {
             display: grid;
@@ -44,14 +35,9 @@
             padding: 18px;
             border-radius: 12px;
             border: 1px solid #ddd;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
         }
 
-        .card span {
-            color: #667085;
-            font-size: 13px;
-        }
-
+        .card span { color: #667085; font-size: 13px; }
         .card strong {
             display: block;
             font-size: 28px;
@@ -59,14 +45,8 @@
             color: #1f4d2b;
         }
 
-        section {
-            margin-bottom: 36px;
-        }
-
-        h2 {
-            margin-bottom: 10px;
-            color: #243b2a;
-        }
+        section { margin-bottom: 36px; }
+        h2 { margin-bottom: 10px; color: #243b2a; }
 
         table {
             width: 100%;
@@ -88,11 +68,6 @@
         th {
             background: #e6f1e8;
             color: #1f4d2b;
-            font-weight: bold;
-        }
-
-        tr:hover td {
-            background: #fafafa;
         }
 
         .badge {
@@ -124,15 +99,31 @@
             word-break: break-word;
         }
 
+        button {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #1f4d2b;
+            color: white;
+            margin: 2px;
+        }
+
+        .danger { background: #991b1b; }
+        .warning { background: #92400e; }
+
+        input {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            width: 120px;
+        }
+
+        form { margin: 0; }
+
         @media (max-width: 900px) {
-            .stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            main {
-                padding: 18px;
-            }
-
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            main { padding: 18px; }
             table {
                 display: block;
                 overflow-x: auto;
@@ -146,7 +137,7 @@
 
 <header>
     <h1>Agri Broker Dashboard</h1>
-    <p>Marketplace operations, trust, deals, and learning queue</p>
+    <p>Marketplace operations, trust, deals, learning, and moderation</p>
 </header>
 
 <main>
@@ -167,6 +158,7 @@
             <tr>
                 <th>Commodity</th>
                 <th>Quantity</th>
+                <th>Unit</th>
                 <th>Location</th>
                 <th>Intent</th>
                 <th>Seller</th>
@@ -177,6 +169,7 @@
             <tr>
                 <td>{{ item.commodity }}</td>
                 <td>{{ item.quantity }}</td>
+                <td>{{ item.unit }}</td>
                 <td>{{ item.location }}</td>
                 <td>{{ item.intent }}</td>
                 <td>{{ item.seller_phone }}</td>
@@ -201,8 +194,10 @@
                 <th>Total Deals</th>
                 <th>Commodity</th>
                 <th>Quantity</th>
+                <th>Unit</th>
                 <th>Location</th>
                 <th>Phone</th>
+                <th>Actions</th>
             </tr>
             {% for buyer in buyers %}
             <tr>
@@ -218,8 +213,21 @@
                 <td>{{ buyer.total_deals }}</td>
                 <td>{{ buyer.commodity }}</td>
                 <td>{{ buyer.quantity }}</td>
+                <td>{{ buyer.unit }}</td>
                 <td>{{ buyer.location }}</td>
                 <td>{{ buyer.phone }}</td>
+                <td>
+                    <form method="post" action="/dashboard/buyers/verify" style="display:inline;">
+                        <input type="hidden" name="buyer_id" value="{{ buyer.id }}">
+                        <button type="submit">Verify</button>
+                    </form>
+
+                    <form method="post" action="/dashboard/buyers/block" style="display:inline;">
+                        <input type="hidden" name="phone" value="{{ buyer.phone }}">
+                        <input type="hidden" name="reason" value="Blocked from dashboard">
+                        <button class="danger" type="submit">Block</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </table>
@@ -238,6 +246,9 @@
                 <th>Buyer Phone</th>
                 <th>Seller Phone</th>
                 <th>Status</th>
+                <th>Buyer Feedback</th>
+                <th>Seller Feedback</th>
+                <th>Feedback Due</th>
                 <th>Created</th>
             </tr>
             {% for deal in deals %}
@@ -253,6 +264,9 @@
                         <span class="badge pending">{{ deal.status }}</span>
                     {% endif %}
                 </td>
+                <td>{{ deal.buyer_feedback }}</td>
+                <td>{{ deal.seller_feedback }}</td>
+                <td>{{ deal.feedback_due_at }}</td>
                 <td>{{ deal.created_at }}</td>
             </tr>
             {% endfor %}
@@ -272,14 +286,27 @@
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Created</th>
+                <th>Actions</th>
             </tr>
             {% for report in fraud_reports %}
             <tr>
                 <td>{{ report.reporter_phone }}</td>
                 <td>{{ report.reported_phone }}</td>
                 <td>{{ report.reason }}</td>
-                <td><span class="badge open">{{ report.status }}</span></td>
+                <td>
+                    {% if report.status == "open" %}
+                        <span class="badge open">{{ report.status }}</span>
+                    {% else %}
+                        <span class="badge confirmed">{{ report.status }}</span>
+                    {% endif %}
+                </td>
                 <td>{{ report.created_at }}</td>
+                <td>
+                    <form method="post" action="/dashboard/fraud/resolve">
+                        <input type="hidden" name="report_id" value="{{ report.id }}">
+                        <button type="submit">Resolve</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </table>
@@ -317,16 +344,26 @@
             <tr>
                 <th>Term</th>
                 <th>Count</th>
+                <th>Unique Users</th>
                 <th>Status</th>
                 <th>Context</th>
+                <th>Approve As</th>
                 <th>Created</th>
             </tr>
             {% for term in unknown_terms %}
             <tr>
                 <td>{{ term.term }}</td>
                 <td>{{ term.count }}</td>
+                <td>{{ term.unique_reporters }}</td>
                 <td>{{ term.status }}</td>
                 <td class="small">{{ term.context }}</td>
+                <td>
+                    <form method="post" action="/dashboard/learning/approve">
+                        <input type="hidden" name="term" value="{{ term.term }}">
+                        <input type="text" name="normalized" placeholder="e.g. goat" required>
+                        <button type="submit">Approve</button>
+                    </form>
+                </td>
                 <td>{{ term.created_at }}</td>
             </tr>
             {% endfor %}

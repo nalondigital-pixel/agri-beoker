@@ -10,6 +10,10 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 templates = Jinja2Templates(directory="app/templates")
 
 
+def is_logged_in(request: Request):
+    return request.cookies.get("dashboard_auth") == "ok"
+
+
 @router.get("/login", response_class=HTMLResponse)
 def dashboard_login_page(request: Request):
     return templates.TemplateResponse(
@@ -36,7 +40,7 @@ def dashboard_login(password: str = Form(...)):
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard_home(request: Request):
-    if request.cookies.get("dashboard_auth") != "ok":
+    if not is_logged_in(request):
         return RedirectResponse(url="/dashboard/login", status_code=302)
 
     listings = supabase.table("listings").select("*").order("created_at", desc=True).execute().data or []
@@ -58,3 +62,68 @@ def dashboard_home(request: Request):
             "unknown_terms": unknown_terms,
         },
     )
+
+
+@router.post("/buyers/verify")
+def verify_buyer(request: Request, buyer_id: str = Form(...)):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/dashboard/login", status_code=302)
+
+    supabase.table("buyers").update({
+        "verified": True,
+        "reputation": 10,
+    }).eq("id", buyer_id).execute()
+
+    return RedirectResponse(url="/dashboard/", status_code=302)
+
+
+@router.post("/buyers/block")
+def block_buyer(
+    request: Request,
+    phone: str = Form(...),
+    reason: str = Form("Blocked from dashboard"),
+):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/dashboard/login", status_code=302)
+
+    supabase.table("blocked_users").upsert({
+        "phone": phone,
+        "reason": reason,
+    }).execute()
+
+    return RedirectResponse(url="/dashboard/", status_code=302)
+
+
+@router.post("/fraud/resolve")
+def resolve_fraud_report(request: Request, report_id: str = Form(...)):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/dashboard/login", status_code=302)
+
+    supabase.table("fraud_reports").update({
+        "status": "resolved",
+    }).eq("id", report_id).execute()
+
+    return RedirectResponse(url="/dashboard/", status_code=302)
+
+
+@router.post("/learning/approve")
+def approve_learned_word(
+    request: Request,
+    term: str = Form(...),
+    normalized: str = Form(...),
+):
+    if not is_logged_in(request):
+        return RedirectResponse(url="/dashboard/login", status_code=302)
+
+    supabase.table("commodity_aliases").upsert({
+        "alias": term.strip().lower(),
+        "normalized": normalized.strip().lower(),
+        "auto_learned": False,
+    }).execute()
+
+    supabase.table("unknown_terms").update({
+        "status": "approved",
+        "suggested_normalized": normalized.strip().lower(),
+    }).eq("term", term).execute()
+
+    return RedirectResponse(url="/dashboard/", status_code=302)
