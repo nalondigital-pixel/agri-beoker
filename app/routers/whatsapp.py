@@ -56,6 +56,13 @@ from app.services.message_dedupe_service import (
 )
 from app.services.ai_assistant_service import generate_ai_assistant_reply
 from app.services.price_intelligence_service import get_price_guidance_for_listing
+from app.services.location_pin_service import (
+    extract_location_pin,
+    save_user_location_pin,
+    attach_profile_coordinates_to_listing,
+    build_location_pin_reply,
+    filter_matches_within_radius,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -176,6 +183,24 @@ def format_transport_line(listing: dict):
     return f"Transport: {label}"
 
 
+def format_distance_line(match_data: dict):
+    distance_km = match_data.get("_distance_km")
+    radius_message = match_data.get("_radius_message")
+    geo_message = match_data.get("_geo_message")
+
+    lines = []
+
+    if distance_km is not None:
+        lines.append(f"Distance: about {distance_km} km away")
+
+    if radius_message:
+        lines.append(radius_message)
+    elif geo_message:
+        lines.append(geo_message)
+
+    return "\n".join(lines)
+
+
 def format_chat_link(phone: str):
     if not phone:
         return "Not available"
@@ -236,6 +261,14 @@ def show_ai_assistant_menu(phone: str, incoming_message: str):
 
 
 def extract_incoming_message(message_data: dict):
+    location_pin = extract_location_pin(message_data)
+
+    if location_pin:
+        return {
+            "type": "location_pin",
+            "data": location_pin,
+        }
+
     if "text" in message_data:
         return message_data["text"]["body"].strip()
 
@@ -313,7 +346,7 @@ def get_missing_listing_fields(listing: dict):
     quantity = listing.get("quantity")
     location = listing.get("location")
 
-    if not commodity or str(commodity).strip() in ["", "unknown", "none"]:
+    if not commodity or str(commodity).strip().lower() in ["", "unknown", "none"]:
         missing.append("commodity")
 
     try:
@@ -324,7 +357,7 @@ def get_missing_listing_fields(listing: dict):
     if quantity_number <= 0:
         missing.append("quantity")
 
-    if not location or str(location).strip() in ["", "unknown", "none"]:
+    if not location or str(location).strip().lower() in ["", "unknown", "none"]:
         missing.append("location")
 
     return missing
@@ -342,7 +375,11 @@ def get_missing_field_question(field: str, listing: dict):
         return "What quantity? Please include unit if possible. Example: 20 kg, 10 bags, 4 goats."
 
     if field == "location":
-        return "Where is it located? Example: Rimuka Kadoma, Chegutu, Harare."
+        return (
+            "Where is it located?\n\n"
+            "You can type the area, for example: Rimuka Kadoma.\n"
+            "Or send a WhatsApp location pin for more accurate distance matching."
+        )
 
     return "Please send the missing detail."
 
@@ -471,6 +508,10 @@ def build_listing_confirmation_message(extracted: dict):
     location = format_location(extracted)
     confidence = extracted.get("confidence", 0)
 
+    latitude = extracted.get("latitude")
+    longitude = extracted.get("longitude")
+    location_source = extracted.get("location_source")
+
     try:
         confidence_percent = int(float(confidence) * 100)
     except Exception:
@@ -487,6 +528,14 @@ def build_listing_confirmation_message(extracted: dict):
 
     if transport_text:
         optional_blocks += f"{transport_text}\n"
+
+    if latitude is not None and longitude is not None:
+        if location_source == "profile_whatsapp_pin":
+            optional_blocks += "Location accuracy: WhatsApp pin from your profile\n"
+        elif location_source == "whatsapp_pin":
+            optional_blocks += "Location accuracy: WhatsApp pin\n"
+        else:
+            optional_blocks += "Location accuracy: GPS coordinates available\n"
 
     if price_guidance:
         optional_blocks += f"\n{price_guidance}\n"
@@ -519,6 +568,7 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
 
     price_text = format_price_line(listing)
     transport_text = format_transport_line(listing)
+    distance_text = format_distance_line(match_data)
 
     extra = ""
 
@@ -528,13 +578,20 @@ def send_match_alert_to_buyer(buyer_phone, seller_phone, listing, match_data):
     if transport_text:
         extra += f"\n{transport_text}"
 
+    if distance_text:
+        extra += f"\n{distance_text}"
+
     buyer_message = translate(
         buyer_phone,
         "buyer_match_alert",
         commodity=listing.get("commodity"),
         quantity=format_quantity(listing),
         location=format_location(listing),
-        distance_match=match_data.get("_geo_message", "Location match"),
+        distance_match=(
+            match_data.get("_radius_message")
+            or match_data.get("_geo_message")
+            or "Location match"
+        ),
         seller_trust=format_trust(seller_phone),
         match_score=match_data.get("_match_score", 0),
         match_reasons=match_reasons,
@@ -559,6 +616,7 @@ def notify_active_request_matches(new_listing):
     )
 
     active_matches = find_active_listing_matches(new_listing, active_opposites)
+    active_matches = filter_matches_within_radius(new_listing, active_matches)
 
     sent_count = 0
 
@@ -666,6 +724,9 @@ def build_request_card(listing: dict):
     if transport_text:
         optional_block += f"{transport_text}\n"
 
+    if listing.get("latitude") is not None and listing.get("longitude") is not None:
+        optional_block += "Location: GPS pin available\n"
+
     return (
         f"📌 Active Request\n\n"
         f"Type: {intent}\n"
@@ -769,6 +830,8 @@ def handle_request_action(phone: str, incoming_message: str):
 
 
 def prepare_listing_for_confirmation(sender_phone: str, listing: dict, original_step: str):
+    listing = attach_profile_coordinates_to_listing(sender_phone, listing)
+
     missing_fields = get_missing_listing_fields(listing)
 
     if missing_fields:
@@ -847,6 +910,7 @@ def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
 
     if listing.get("intent") == "sell":
         matches = find_matches(listing)
+        matches = filter_matches_within_radius(listing, matches)
 
     if not matches and active_match_count == 0:
         send_whatsapp_message(
@@ -947,6 +1011,34 @@ async def receive_message(request: Request):
 
         if not incoming_message:
             return {"status": "ignored_unsupported_message"}
+
+        if isinstance(incoming_message, dict) and incoming_message.get("type") == "location_pin":
+            location_pin = incoming_message.get("data")
+
+            save_user_location_pin(sender_phone, location_pin)
+
+            send_whatsapp_message(
+                sender_phone,
+                build_location_pin_reply(location_pin),
+            )
+
+            session = get_session(sender_phone)
+
+            if session and session.get("current_step") in [
+                "create_buy_request",
+                "create_sell_listing",
+                "collect_missing_listing_field",
+                "confirm_listing",
+            ]:
+                send_whatsapp_message(
+                    sender_phone,
+                    "Now send the product details. Example: 20 kg beef for $80",
+                )
+
+            return {
+                "status": "location_pin_saved",
+                "location": location_pin,
+            }
 
         if incoming_message == "VOICE_TRANSCRIPTION_NOT_READY":
             send_whatsapp_message(

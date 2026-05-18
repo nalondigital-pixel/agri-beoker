@@ -26,6 +26,12 @@ def save_listing(data):
         "transport_needed": data.get("transport_needed") or False,
         "delivery_option": data.get("delivery_option"),
         "transport_note": data.get("transport_note"),
+
+        # Radius/location intelligence
+        "latitude": data.get("latitude"),
+        "longitude": data.get("longitude"),
+        "radius_km": data.get("radius_km") or 80,
+        "location_source": data.get("location_source"),
     }).execute()
 
     if response.data:
