@@ -68,6 +68,10 @@ from app.services.transport_pooling_service import (
     handle_pool_interest,
     handle_pool_ignore,
 )
+from app.services.transporter_service import (
+    handle_transporter_accept,
+    handle_transporter_decline,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -318,6 +322,12 @@ def normalize_command(message: str):
         return message
 
     if message.startswith("pool_ignore_"):
+        return message
+
+    if message.startswith("transporter_accept_"):
+        return message
+
+    if message.startswith("transporter_decline_"):
         return message
 
     command_map = {
@@ -792,6 +802,30 @@ def send_active_request_buttons(phone: str):
     return sent_count
 
 
+def handle_transporter_action(sender_phone: str, incoming_message: str):
+    if incoming_message.startswith("transporter_accept_"):
+        job_id = incoming_message.replace("transporter_accept_", "").strip()
+
+        handle_transporter_accept(
+            phone=sender_phone,
+            job_id=job_id,
+        )
+
+        return True
+
+    if incoming_message.startswith("transporter_decline_"):
+        job_id = incoming_message.replace("transporter_decline_", "").strip()
+
+        handle_transporter_decline(
+            phone=sender_phone,
+            job_id=job_id,
+        )
+
+        return True
+
+    return False
+
+
 def handle_transport_pool_action(sender_phone: str, incoming_message: str):
     if incoming_message.startswith("pool_interest_"):
         suggestion_id = incoming_message.replace("pool_interest_", "").strip()
@@ -1091,6 +1125,9 @@ async def receive_message(request: Request):
 
         if is_blocked_user(sender_phone):
             return {"status": "blocked_user_ignored"}
+
+        if handle_transporter_action(sender_phone, incoming_message):
+            return {"status": "transporter_action_handled"}
 
         if handle_transport_pool_action(sender_phone, incoming_message):
             return {"status": "transport_pool_action_handled"}

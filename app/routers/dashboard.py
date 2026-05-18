@@ -666,3 +666,213 @@ def block_untrusted_user(
     }).eq("id", case_id).execute()
 
     return RedirectResponse(url="/dashboard/", status_code=302)
+
+@router.get("/transport")
+def transport_dashboard(request: Request):
+    password = request.query_params.get("password")
+
+    if password != DASHBOARD_PASSWORD:
+        return HTMLResponse(
+            """
+            <html>
+                <body style="font-family: Arial; padding: 30px;">
+                    <h2>Transport Dashboard Login</h2>
+                    <form method="get" action="/dashboard/transport">
+                        <input 
+                            type="password" 
+                            name="password" 
+                            placeholder="Dashboard password"
+                            style="padding: 10px; width: 250px;"
+                        />
+                        <button type="submit" style="padding: 10px;">Open</button>
+                    </form>
+                </body>
+            </html>
+            """
+        )
+
+    routes_response = (
+        supabase.table("transport_pool_routes")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    )
+
+    suggestions_response = (
+        supabase.table("transport_pool_suggestions")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    )
+
+    routes = routes_response.data or []
+    suggestions = suggestions_response.data or []
+
+    route_rows = ""
+
+    for route in routes:
+        route_rows += f"""
+        <tr>
+            <td>{route.get("created_at", "")}</td>
+            <td>{route.get("owner_phone", "")}</td>
+            <td>{route.get("other_party_phone", "")}</td>
+            <td>{route.get("origin", "")}</td>
+            <td>{route.get("destination", "")}</td>
+            <td>{route.get("commodity", "")}</td>
+            <td>{route.get("quantity", "")} {route.get("unit", "")}</td>
+            <td>{route.get("status", "")}</td>
+        </tr>
+        """
+
+    suggestion_rows = ""
+
+    for suggestion in suggestions:
+        interested = suggestion.get("interested_phones") or []
+        notified = suggestion.get("notified_phones") or []
+
+        suggestion_rows += f"""
+        <tr>
+            <td>{suggestion.get("created_at", "")}</td>
+            <td>{suggestion.get("origin_area", "")}</td>
+            <td>{suggestion.get("destination", "")}</td>
+            <td>{suggestion.get("total_quantity", "")} {suggestion.get("unit", "")}</td>
+            <td>{suggestion.get("status", "")}</td>
+            <td>{len(notified)}</td>
+            <td>{len(interested)}</td>
+            <td>{", ".join(interested)}</td>
+        </tr>
+        """
+
+    html = f"""
+    <html>
+        <head>
+            <title>Transport Pooling Dashboard</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background: #f5f7f5;
+                    padding: 24px;
+                    color: #1f2933;
+                }}
+
+                h1, h2 {{
+                    color: #14532d;
+                }}
+
+                .nav {{
+                    margin-bottom: 20px;
+                }}
+
+                .nav a {{
+                    margin-right: 12px;
+                    color: #166534;
+                    text-decoration: none;
+                    font-weight: bold;
+                }}
+
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: white;
+                    margin-bottom: 32px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                }}
+
+                th {{
+                    background: #166534;
+                    color: white;
+                    text-align: left;
+                    padding: 10px;
+                    font-size: 13px;
+                }}
+
+                td {{
+                    padding: 10px;
+                    border-bottom: 1px solid #e5e7eb;
+                    font-size: 13px;
+                    vertical-align: top;
+                }}
+
+                .card {{
+                    background: white;
+                    padding: 16px;
+                    border-radius: 10px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                }}
+
+                .metric {{
+                    display: inline-block;
+                    margin-right: 20px;
+                    background: #dcfce7;
+                    padding: 10px 14px;
+                    border-radius: 8px;
+                    color: #14532d;
+                    font-weight: bold;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="nav">
+                <a href="/dashboard/?password={password}">Main Dashboard</a>
+                <a href="/dashboard/transport?password={password}">Transport</a>
+            </div>
+
+            <h1>🚚 Transport Pooling Dashboard</h1>
+
+            <div class="card">
+                <span class="metric">Routes: {len(routes)}</span>
+                <span class="metric">Pool Suggestions: {len(suggestions)}</span>
+                <span class="metric">
+                    Ready To Coordinate: {
+                        len([s for s in suggestions if s.get("status") == "ready_to_coordinate"])
+                    }
+                </span>
+            </div>
+
+            <h2>Active Transport Routes</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Owner</th>
+                        <th>Other Party</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Commodity</th>
+                        <th>Quantity</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {route_rows or '<tr><td colspan="8">No transport routes yet.</td></tr>'}
+                </tbody>
+            </table>
+
+            <h2>Transport Pool Suggestions</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Total Load</th>
+                        <th>Status</th>
+                        <th>Notified</th>
+                        <th>Interested</th>
+                        <th>Interested Phones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {suggestion_rows or '<tr><td colspan="8">No pool suggestions yet.</td></tr>'}
+                </tbody>
+            </table>
+        </body>
+    </html>
+    """
+
+    return HTMLResponse(html)
