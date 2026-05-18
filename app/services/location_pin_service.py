@@ -2,6 +2,7 @@ import math
 
 from app.services.profile_service import get_profile, update_profile
 from app.services.geo_service import get_location_info
+from app.services.location_normalizer_service import normalize_location_name
 
 
 DEFAULT_RADIUS_KM = 80
@@ -86,10 +87,12 @@ def save_user_location_pin(phone: str, location_pin: dict):
         or "WhatsApp location pin"
     )
 
+    normalized_address = normalize_location_name(address)
+
     return update_profile(phone, {
         "latitude": location_pin.get("latitude"),
         "longitude": location_pin.get("longitude"),
-        "location_address": address,
+        "location_address": normalized_address,
         "location_source": "whatsapp_pin",
     })
 
@@ -110,7 +113,7 @@ def get_user_coordinates(phone: str):
         return {
             "latitude": float(latitude),
             "longitude": float(longitude),
-            "address": profile.get("location_address"),
+            "address": normalize_location_name(profile.get("location_address") or ""),
         }
     except Exception:
         return None
@@ -119,7 +122,14 @@ def get_user_coordinates(phone: str):
 def attach_profile_coordinates_to_listing(phone: str, listing: dict):
     """
     If the listing has no lat/lng, use the user's saved WhatsApp pin.
+    Also normalizes typed location names and typos.
     """
+
+    if not listing:
+        return listing
+
+    if listing.get("location"):
+        listing["location"] = normalize_location_name(listing.get("location"))
 
     if listing.get("latitude") is not None and listing.get("longitude") is not None:
         return listing
@@ -134,12 +144,15 @@ def attach_profile_coordinates_to_listing(phone: str, listing: dict):
     listing["location_source"] = "profile_whatsapp_pin"
 
     if not listing.get("location") and coords.get("address"):
-        listing["location"] = coords.get("address")
+        listing["location"] = normalize_location_name(coords.get("address"))
 
     return listing
 
 
 def attach_direct_pin_to_listing(listing: dict, location_pin: dict):
+    if not listing:
+        listing = {}
+
     if not location_pin:
         return listing
 
@@ -154,7 +167,7 @@ def attach_direct_pin_to_listing(listing: dict, location_pin: dict):
     )
 
     if address:
-        listing["location"] = address
+        listing["location"] = normalize_location_name(address)
 
     return listing
 
@@ -176,7 +189,7 @@ def get_coordinates_from_listing(listing: dict):
         except Exception:
             pass
 
-    location_name = listing.get("location")
+    location_name = normalize_location_name(listing.get("location") or "")
 
     if not location_name:
         return None
@@ -287,7 +300,13 @@ def filter_matches_within_radius(base_listing: dict, matches: list):
 
 
 def build_location_pin_reply(location_pin: dict):
-    address = location_pin.get("address") or location_pin.get("name") or "your pinned location"
+    address = (
+        location_pin.get("address")
+        or location_pin.get("name")
+        or "your pinned location"
+    )
+
+    address = normalize_location_name(address)
 
     return (
         "✅ Location pin saved.\n\n"
