@@ -15,6 +15,7 @@ TRANSPORTER_COMMANDS = [
     "register transporter",
     "register as transporter",
     "transport registration",
+    "transport",
 ]
 
 
@@ -37,11 +38,17 @@ def start_transporter_registration(phone: str):
         },
     )
 
-    return (
-        "🚛 Transporter Registration\n\n"
-        "Great. I will register you as a transporter.\n\n"
-        "What is your name or company name?"
-    )
+    return {
+        "handled": True,
+        "done": False,
+        "reply": (
+            "🚛 Transporter Registration\n\n"
+            "Great. I will register you as a transporter.\n\n"
+            "You can type *cancel* anytime to stop.\n\n"
+            "What is your name or company name?"
+        ),
+        "buttons": None,
+    }
 
 
 def parse_capacity(message: str):
@@ -88,33 +95,86 @@ def parse_capacity(message: str):
     return value, unit
 
 
-def get_transporter_registration_prompt(step: str, data: dict):
-    if step == "name":
-        return "What is your name or company name?"
+def build_location_pin_prompt():
+    return {
+        "handled": True,
+        "done": False,
+        "reply": (
+            "📍 Optional but recommended:\n\n"
+            "Please send your WhatsApp live/current location pin so we can match you to nearby transport jobs.\n\n"
+            "How to send location:\n"
+            "1. Tap the paperclip / + icon\n"
+            "2. Tap Location\n"
+            "3. Send your current location\n\n"
+            "Or tap *Skip Pin* if you want to continue without GPS."
+        ),
+        "buttons": [
+            {
+                "id": "transporter_skip_pin",
+                "title": "Skip Pin",
+            }
+        ],
+    }
 
-    if step == "base_location":
-        return (
-            "Which town or area are you based in?\n\n"
-            "Example: Harare, Chegutu, Kadoma, Mutare, Bulawayo"
-        )
 
-    if step == "vehicle_type":
-        return (
+def handle_transporter_location_pin(phone: str, location_pin: dict):
+    """
+    Called from whatsapp.py when user sends a location pin during transporter registration.
+    """
+
+    session = get_session(phone)
+
+    if not session or session.get("current_step") != "transporter_registration":
+        return {
+            "handled": False,
+        }
+
+    temp_data = session.get("temp_data") or {}
+    step = temp_data.get("step")
+    data = temp_data.get("data") or {}
+
+    if step != "location_pin":
+        return {
+            "handled": False,
+        }
+
+    data["latitude"] = location_pin.get("latitude")
+    data["longitude"] = location_pin.get("longitude")
+
+    pin_address = (
+        location_pin.get("address")
+        or location_pin.get("name")
+        or data.get("base_location")
+        or ""
+    )
+
+    if pin_address and not data.get("base_location"):
+        data["base_location"] = normalize_location_name(pin_address)
+
+    set_session(
+        phone,
+        "transporter_registration",
+        {
+            "step": "vehicle_type",
+            "data": data,
+        },
+    )
+
+    return {
+        "handled": True,
+        "done": False,
+        "reply": (
+            "✅ Transporter location pin saved.\n\n"
             "What vehicle do you use?\n\n"
-            "Example: pickup, 1 tonne truck, 3 tonne truck, lorry, kombi"
-        )
-
-    if step == "capacity":
-        return (
-            "What load capacity can you carry?\n\n"
             "Examples:\n"
-            "1000kg\n"
-            "1 tonne\n"
-            "50 boxes\n"
-            "100 bags"
-        )
-
-    return "Please send the next detail."
+            "pickup\n"
+            "1 tonne truck\n"
+            "3 tonne truck\n"
+            "lorry\n"
+            "kombi"
+        ),
+        "buttons": None,
+    }
 
 
 def handle_transporter_registration_message(phone: str, message: str):
@@ -130,8 +190,9 @@ def handle_transporter_registration_message(phone: str, message: str):
     data = temp_data.get("data") or {}
 
     text = str(message or "").strip()
+    text_lower = text.lower()
 
-    if text.lower() in ["cancel", "stop", "menu"]:
+    if text_lower in ["cancel", "stop", "quit"]:
         clear_session(phone)
 
         return {
@@ -139,8 +200,9 @@ def handle_transporter_registration_message(phone: str, message: str):
             "done": False,
             "reply": (
                 "Transporter registration cancelled.\n\n"
-                "Send 'transporter' anytime to start again."
+                "Send *transporter* anytime to start again."
             ),
+            "buttons": None,
         }
 
     if step == "name":
@@ -149,6 +211,7 @@ def handle_transporter_registration_message(phone: str, message: str):
                 "handled": True,
                 "done": False,
                 "reply": "Please send your name or company name.",
+                "buttons": None,
             }
 
         data["name"] = text
@@ -165,7 +228,16 @@ def handle_transporter_registration_message(phone: str, message: str):
         return {
             "handled": True,
             "done": False,
-            "reply": get_transporter_registration_prompt("base_location", data),
+            "reply": (
+                "Which town or area are you based in?\n\n"
+                "Examples:\n"
+                "Harare\n"
+                "Chegutu\n"
+                "Kadoma\n"
+                "Mutare\n"
+                "Bulawayo"
+            ),
+            "buttons": None,
         }
 
     if step == "base_location":
@@ -179,6 +251,7 @@ def handle_transporter_registration_message(phone: str, message: str):
                     "Please send your base town or area.\n\n"
                     "Example: Harare, Chegutu, Kadoma"
                 ),
+                "buttons": None,
             }
 
         data["base_location"] = normalized_location
@@ -187,16 +260,41 @@ def handle_transporter_registration_message(phone: str, message: str):
             phone,
             "transporter_registration",
             {
-                "step": "vehicle_type",
+                "step": "location_pin",
                 "data": data,
             },
         )
 
-        return {
-            "handled": True,
-            "done": False,
-            "reply": get_transporter_registration_prompt("vehicle_type", data),
-        }
+        return build_location_pin_prompt()
+
+    if step == "location_pin":
+        if text_lower == "transporter_skip_pin" or text_lower in ["skip", "skip pin", "no"]:
+            set_session(
+                phone,
+                "transporter_registration",
+                {
+                    "step": "vehicle_type",
+                    "data": data,
+                },
+            )
+
+            return {
+                "handled": True,
+                "done": False,
+                "reply": (
+                    "No problem. We will use your base town instead.\n\n"
+                    "What vehicle do you use?\n\n"
+                    "Examples:\n"
+                    "pickup\n"
+                    "1 tonne truck\n"
+                    "3 tonne truck\n"
+                    "lorry\n"
+                    "kombi"
+                ),
+                "buttons": None,
+            }
+
+        return build_location_pin_prompt()
 
     if step == "vehicle_type":
         if len(text) < 2:
@@ -204,6 +302,7 @@ def handle_transporter_registration_message(phone: str, message: str):
                 "handled": True,
                 "done": False,
                 "reply": "Please send your vehicle type. Example: 1 tonne truck.",
+                "buttons": None,
             }
 
         data["vehicle_type"] = text
@@ -220,7 +319,15 @@ def handle_transporter_registration_message(phone: str, message: str):
         return {
             "handled": True,
             "done": False,
-            "reply": get_transporter_registration_prompt("capacity", data),
+            "reply": (
+                "What load capacity can you carry?\n\n"
+                "Examples:\n"
+                "1000kg\n"
+                "1 tonne\n"
+                "50 boxes\n"
+                "100 bags"
+            ),
+            "buttons": None,
         }
 
     if step == "capacity":
@@ -238,6 +345,7 @@ def handle_transporter_registration_message(phone: str, message: str):
                     "50 boxes\n"
                     "100 bags"
                 ),
+                "buttons": None,
             }
 
         data["vehicle_capacity"] = capacity
@@ -250,6 +358,8 @@ def handle_transporter_registration_message(phone: str, message: str):
             vehicle_type=data.get("vehicle_type"),
             vehicle_capacity=data.get("vehicle_capacity"),
             capacity_unit=data.get("capacity_unit"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
             is_verified=False,
         )
 
@@ -263,7 +373,10 @@ def handle_transporter_registration_message(phone: str, message: str):
                     "Sorry, I could not save your transporter registration. "
                     "Please try again later."
                 ),
+                "buttons": None,
             }
+
+        gps_line = "GPS pin: saved" if data.get("latitude") and data.get("longitude") else "GPS pin: not provided"
 
         return {
             "handled": True,
@@ -273,14 +386,17 @@ def handle_transporter_registration_message(phone: str, message: str):
                 f"Name: {data.get('name')}\n"
                 f"Base: {data.get('base_location')}\n"
                 f"Vehicle: {data.get('vehicle_type')}\n"
-                f"Capacity: {data.get('vehicle_capacity')} {data.get('capacity_unit')}\n\n"
-                "Your account is now pending verification.\n"
-                "Once verified, you can receive transport job alerts from Agri Broker."
+                f"Capacity: {data.get('vehicle_capacity')} {data.get('capacity_unit')}\n"
+                f"{gps_line}\n\n"
+                "Your transporter account is now pending verification.\n\n"
+                "Once verified by admin, you can receive transport job alerts from Agri Broker."
             ),
+            "buttons": None,
         }
 
     return {
         "handled": True,
         "done": False,
-        "reply": get_transporter_registration_prompt(step, data),
+        "reply": "Please send the next transporter registration detail.",
+        "buttons": None,
     }

@@ -76,11 +76,37 @@ from app.services.transporter_registration_service import (
     is_transporter_registration_command,
     start_transporter_registration,
     handle_transporter_registration_message,
+    handle_transporter_location_pin,
 )
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
 DAILY_LISTING_LIMIT = 5
+
+
+def send_reply(phone: str, result: dict):
+    """
+    Sends either plain text or WhatsApp buttons depending on result.
+    Expected result:
+    {
+        "reply": "...",
+        "buttons": [{"id":"...", "title":"..."}]
+    }
+    """
+
+    if not result:
+        return
+
+    reply = result.get("reply")
+    buttons = result.get("buttons")
+
+    if not reply:
+        return
+
+    if buttons:
+        send_whatsapp_buttons(phone, reply, buttons)
+    else:
+        send_whatsapp_message(phone, reply)
 
 
 def format_trust(phone: str):
@@ -112,7 +138,7 @@ def format_quantity(listing: dict):
         else:
             quantity = quantity_number
 
-    except (TypeError, ValueError):
+    except Exception:
         pass
 
     if unit:
@@ -151,8 +177,7 @@ def format_price_line(listing: dict):
     lines = []
 
     if price:
-        price_value = format_price_value(price)
-        lines.append(f"Price: {currency} {price_value}")
+        lines.append(f"Price: {currency} {format_price_value(price)}")
 
     if price_per_unit:
         ppu_value = format_price_value(price_per_unit)
@@ -161,9 +186,6 @@ def format_price_line(listing: dict):
             lines.append(f"Price per {unit}: {currency} {ppu_value}")
         else:
             lines.append(f"Price per unit: {currency} {ppu_value}")
-
-    if not lines:
-        return ""
 
     return "\n".join(lines)
 
@@ -315,25 +337,20 @@ def extract_incoming_message(message_data: dict):
 
 
 def normalize_command(message: str):
-    message = message.strip().lower()
+    message = str(message or "").strip().lower()
 
-    if message.startswith("cancel_request_"):
-        return message
+    prefix_commands = [
+        "cancel_request_",
+        "fulfill_request_",
+        "pool_interest_",
+        "pool_ignore_",
+        "transporter_accept_",
+        "transporter_decline_",
+    ]
 
-    if message.startswith("fulfill_request_"):
-        return message
-
-    if message.startswith("pool_interest_"):
-        return message
-
-    if message.startswith("pool_ignore_"):
-        return message
-
-    if message.startswith("transporter_accept_"):
-        return message
-
-    if message.startswith("transporter_decline_"):
-        return message
+    for prefix in prefix_commands:
+        if message.startswith(prefix):
+            return message
 
     command_map = {
         "buyer_interested": "1",
@@ -360,6 +377,8 @@ def normalize_command(message: str):
         "transport_need": "transport_need",
         "transport_will_collect": "transport_will_collect",
         "transport_skip": "transport_skip",
+
+        "transporter_skip_pin": "transporter_skip_pin",
     }
 
     return command_map.get(message, message)
@@ -414,8 +433,7 @@ def update_listing_with_missing_answer(pending_listing: dict, field: str, answer
     extracted = extract_market_data(answer, reporter_phone=phone)
 
     if field == "commodity":
-        commodity = extracted.get("commodity") or answer.strip().lower()
-        pending_listing["commodity"] = commodity
+        pending_listing["commodity"] = extracted.get("commodity") or answer.strip().lower()
 
     elif field == "quantity":
         quantity = extracted.get("quantity")
@@ -435,30 +453,13 @@ def update_listing_with_missing_answer(pending_listing: dict, field: str, answer
                 pass
 
     elif field == "location":
-        location = extracted.get("location") or answer.strip()
-        pending_listing["location"] = location
+        pending_listing["location"] = extracted.get("location") or answer.strip()
 
-    price = extracted.get("price")
-    price_per_unit = extracted.get("price_per_unit")
-    currency = extracted.get("currency")
+    for key in ["price", "price_per_unit", "currency", "delivery_option", "transport_note"]:
+        value = extracted.get(key)
 
-    if price and not pending_listing.get("price"):
-        pending_listing["price"] = price
-
-    if price_per_unit and not pending_listing.get("price_per_unit"):
-        pending_listing["price_per_unit"] = price_per_unit
-
-    if currency and not pending_listing.get("currency"):
-        pending_listing["currency"] = currency
-
-    delivery_option = extracted.get("delivery_option")
-    transport_note = extracted.get("transport_note")
-
-    if delivery_option and delivery_option != "unknown":
-        pending_listing["delivery_option"] = delivery_option
-
-    if transport_note:
-        pending_listing["transport_note"] = transport_note
+        if value and not pending_listing.get(key):
+            pending_listing[key] = value
 
     if extracted.get("transport_needed"):
         pending_listing["transport_needed"] = True
@@ -468,7 +469,6 @@ def update_listing_with_missing_answer(pending_listing: dict, field: str, answer
 
 def should_ask_transport(listing: dict):
     delivery_option = listing.get("delivery_option")
-
     return not delivery_option or delivery_option == "unknown"
 
 
@@ -768,16 +768,10 @@ def send_active_request_buttons(phone: str):
     active_requests = get_active_listings_by_phone(phone)
 
     if not active_requests:
-        send_whatsapp_message(
-            phone,
-            "You have no active requests right now.",
-        )
+        send_whatsapp_message(phone, "You have no active requests right now.")
         return 0
 
-    send_whatsapp_message(
-        phone,
-        f"You have {len(active_requests)} active request(s).",
-    )
+    send_whatsapp_message(phone, f"You have {len(active_requests)} active request(s).")
 
     sent_count = 0
 
@@ -791,14 +785,8 @@ def send_active_request_buttons(phone: str):
             phone,
             build_request_card(request_item),
             [
-                {
-                    "id": f"cancel_request_{listing_id}",
-                    "title": "Cancel",
-                },
-                {
-                    "id": f"fulfill_request_{listing_id}",
-                    "title": "Done",
-                },
+                {"id": f"cancel_request_{listing_id}", "title": "Cancel"},
+                {"id": f"fulfill_request_{listing_id}", "title": "Done"},
             ],
         )
 
@@ -810,22 +798,12 @@ def send_active_request_buttons(phone: str):
 def handle_transporter_action(sender_phone: str, incoming_message: str):
     if incoming_message.startswith("transporter_accept_"):
         job_id = incoming_message.replace("transporter_accept_", "").strip()
-
-        handle_transporter_accept(
-            phone=sender_phone,
-            job_id=job_id,
-        )
-
+        handle_transporter_accept(phone=sender_phone, job_id=job_id)
         return True
 
     if incoming_message.startswith("transporter_decline_"):
         job_id = incoming_message.replace("transporter_decline_", "").strip()
-
-        handle_transporter_decline(
-            phone=sender_phone,
-            job_id=job_id,
-        )
-
+        handle_transporter_decline(phone=sender_phone, job_id=job_id)
         return True
 
     return False
@@ -834,22 +812,12 @@ def handle_transporter_action(sender_phone: str, incoming_message: str):
 def handle_transport_pool_action(sender_phone: str, incoming_message: str):
     if incoming_message.startswith("pool_interest_"):
         suggestion_id = incoming_message.replace("pool_interest_", "").strip()
-
-        handle_pool_interest(
-            phone=sender_phone,
-            suggestion_id=suggestion_id,
-        )
-
+        handle_pool_interest(phone=sender_phone, suggestion_id=suggestion_id)
         return True
 
     if incoming_message.startswith("pool_ignore_"):
         suggestion_id = incoming_message.replace("pool_ignore_", "").strip()
-
-        handle_pool_ignore(
-            phone=sender_phone,
-            suggestion_id=suggestion_id,
-        )
-
+        handle_pool_ignore(phone=sender_phone, suggestion_id=suggestion_id)
         return True
 
     return False
@@ -866,16 +834,10 @@ def handle_request_action(phone: str, incoming_message: str):
         )
 
         if updated:
-            send_whatsapp_message(
-                phone,
-                "✅ Request cancelled. It will no longer be matched.",
-            )
+            send_whatsapp_message(phone, "✅ Request cancelled. It will no longer be matched.")
             return True
 
-        send_whatsapp_message(
-            phone,
-            "Could not cancel this request. It may already be closed.",
-        )
+        send_whatsapp_message(phone, "Could not cancel this request. It may already be closed.")
         return True
 
     if incoming_message.startswith("fulfill_request_"):
@@ -888,16 +850,10 @@ def handle_request_action(phone: str, incoming_message: str):
         )
 
         if updated:
-            send_whatsapp_message(
-                phone,
-                "✅ Request marked as done. It will no longer be matched.",
-            )
+            send_whatsapp_message(phone, "✅ Request marked as done. It will no longer be matched.")
             return True
 
-        send_whatsapp_message(
-            phone,
-            "Could not update this request. It may already be closed.",
-        )
+        send_whatsapp_message(phone, "Could not update this request. It may already be closed.")
         return True
 
     return False
@@ -919,10 +875,7 @@ def prepare_listing_for_confirmation(sender_phone: str, listing: dict, original_
             },
         )
 
-        send_whatsapp_message(
-            sender_phone,
-            get_missing_field_question(missing_fields[0], listing),
-        )
+        send_whatsapp_message(sender_phone, get_missing_field_question(missing_fields[0], listing))
 
         return {
             "status": "missing_info_requested",
@@ -941,9 +894,7 @@ def prepare_listing_for_confirmation(sender_phone: str, listing: dict, original_
 
         send_transport_question(sender_phone, listing)
 
-        return {
-            "status": "transport_question_sent",
-        }
+        return {"status": "transport_question_sent"}
 
     set_session(
         sender_phone,
@@ -966,10 +917,8 @@ def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
     listing = save_listing(extracted)
 
     if not listing:
-        send_whatsapp_message(
-            sender_phone,
-            "Sorry, your request could not be saved. Please try again.",
-        )
+        send_whatsapp_message(sender_phone, "Sorry, your request could not be saved. Please try again.")
+
         return {
             "status": "error",
             "message": "Listing could not be saved",
@@ -987,10 +936,7 @@ def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
         matches = filter_matches_within_radius(listing, matches)
 
     if not matches and active_match_count == 0:
-        send_whatsapp_message(
-            sender_phone,
-            translate(sender_phone, "listing_saved_no_matches"),
-        )
+        send_whatsapp_message(sender_phone, translate(sender_phone, "listing_saved_no_matches"))
 
         return {
             "status": "listing_saved_no_matches",
@@ -1022,20 +968,18 @@ def save_confirmed_listing_and_match(sender_phone: str, extracted: dict):
             match_data=buyer,
         )
 
-        sent_alerts.append({
-            "buyer": buyer,
-            "deal": deal,
-        })
+        sent_alerts.append(
+            {
+                "buyer": buyer,
+                "deal": deal,
+            }
+        )
 
     total_sent = len(sent_alerts) + active_match_count
 
     send_whatsapp_message(
         sender_phone,
-        translate(
-            sender_phone,
-            "listing_saved_with_matches",
-            match_count=total_sent,
-        ),
+        translate(sender_phone, "listing_saved_with_matches", match_count=total_sent),
     )
 
     return {
@@ -1086,8 +1030,19 @@ async def receive_message(request: Request):
         if not incoming_message:
             return {"status": "ignored_unsupported_message"}
 
+        session = get_session(sender_phone)
+
         if isinstance(incoming_message, dict) and incoming_message.get("type") == "location_pin":
             location_pin = incoming_message.get("data")
+
+            transporter_pin_result = handle_transporter_location_pin(sender_phone, location_pin)
+
+            if transporter_pin_result.get("handled"):
+                send_reply(sender_phone, transporter_pin_result)
+                return {
+                    "status": "transporter_location_pin_handled",
+                    "location": location_pin,
+                }
 
             save_user_location_pin(sender_phone, location_pin)
 
@@ -1103,11 +1058,10 @@ async def receive_message(request: Request):
                 "create_sell_listing",
                 "collect_missing_listing_field",
                 "confirm_listing",
-                "transporter_registration",
             ]:
                 send_whatsapp_message(
                     sender_phone,
-                    "Location saved. Now continue with the details.",
+                    "Now send the product details. Example: 20 kg beef for $80",
                 )
 
             return {
@@ -1116,10 +1070,7 @@ async def receive_message(request: Request):
             }
 
         if incoming_message == "VOICE_TRANSCRIPTION_NOT_READY":
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "voice_not_ready"),
-            )
+            send_whatsapp_message(sender_phone, translate(sender_phone, "voice_not_ready"))
             return {"status": "voice_received_not_transcribed"}
 
         incoming_message = normalize_command(incoming_message)
@@ -1144,18 +1095,16 @@ async def receive_message(request: Request):
         session = get_session(sender_phone)
 
         if is_transporter_registration_command(incoming_message):
-            reply = start_transporter_registration(sender_phone)
-            send_whatsapp_message(sender_phone, reply)
+            result = start_transporter_registration(sender_phone)
+            send_reply(sender_phone, result)
             return {"status": "transporter_registration_started"}
 
         if session and session.get("current_step") == "transporter_registration":
-            result = handle_transporter_registration_message(
-                sender_phone,
-                incoming_message,
-            )
+            result = handle_transporter_registration_message(sender_phone, incoming_message)
 
             if result.get("handled"):
-                send_whatsapp_message(sender_phone, result.get("reply"))
+                send_reply(sender_phone, result)
+
                 return {
                     "status": "transporter_registration_flow",
                     "done": result.get("done"),
@@ -1208,11 +1157,7 @@ async def receive_message(request: Request):
             original_step = temp_data.get("original_step")
 
             if not missing_fields:
-                return prepare_listing_for_confirmation(
-                    sender_phone,
-                    pending_listing,
-                    original_step,
-                )
+                return prepare_listing_for_confirmation(sender_phone, pending_listing, original_step)
 
             current_field = missing_fields[0]
 
@@ -1246,21 +1191,14 @@ async def receive_message(request: Request):
                     "missing_field": missing_fields[0],
                 }
 
-            return prepare_listing_for_confirmation(
-                sender_phone,
-                pending_listing,
-                original_step,
-            )
+            return prepare_listing_for_confirmation(sender_phone, pending_listing, original_step)
 
         if session and session.get("current_step") == "transport_question":
             temp_data = session.get("temp_data") or {}
             pending_listing = temp_data.get("pending_listing") or {}
             original_step = temp_data.get("original_step")
 
-            pending_listing = apply_transport_answer(
-                pending_listing,
-                incoming_message,
-            )
+            pending_listing = apply_transport_answer(pending_listing, incoming_message)
 
             set_session(
                 sender_phone,
@@ -1309,30 +1247,16 @@ async def receive_message(request: Request):
 
         if incoming_message == "menu_buy":
             set_session(sender_phone, "create_buy_request", {})
-
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "buy_prompt"),
-            )
-
+            send_whatsapp_message(sender_phone, translate(sender_phone, "buy_prompt"))
             return {"status": "buy_flow_started"}
 
         if incoming_message == "menu_sell":
             set_session(sender_phone, "create_sell_listing", {})
-
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "sell_prompt"),
-            )
-
+            send_whatsapp_message(sender_phone, translate(sender_phone, "sell_prompt"))
             return {"status": "sell_flow_started"}
 
         if incoming_message == "menu_deals":
-            send_whatsapp_message(
-                sender_phone,
-                build_my_deals_message(sender_phone),
-            )
-
+            send_whatsapp_message(sender_phone, build_my_deals_message(sender_phone))
             active_count = send_active_request_buttons(sender_phone)
 
             return {
@@ -1355,10 +1279,7 @@ async def receive_message(request: Request):
             parts = incoming_message.split(" ", 2)
 
             if len(parts) < 3:
-                send_whatsapp_message(
-                    sender_phone,
-                    translate(sender_phone, "invalid_report_format"),
-                )
+                send_whatsapp_message(sender_phone, translate(sender_phone, "invalid_report_format"))
                 return {"status": "invalid_report_format"}
 
             reported_phone = parts[1].strip()
@@ -1370,12 +1291,12 @@ async def receive_message(request: Request):
                 reason=reason,
             )
 
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "report_received"),
-            )
+            send_whatsapp_message(sender_phone, translate(sender_phone, "report_received"))
 
-            return {"status": "fraud_report_created", "report": report}
+            return {
+                "status": "fraud_report_created",
+                "report": report,
+            }
 
         seller_deal = find_pending_seller_decision(sender_phone)
 
@@ -1383,10 +1304,7 @@ async def receive_message(request: Request):
             listing = get_listing_by_id(seller_deal.get("listing_id"))
 
             if not listing:
-                send_whatsapp_message(
-                    sender_phone,
-                    "Deal found, but listing details are missing.",
-                )
+                send_whatsapp_message(sender_phone, "Deal found, but listing details are missing.")
                 return {"status": "listing_missing"}
 
             if incoming_message == "1":
@@ -1443,23 +1361,13 @@ async def receive_message(request: Request):
             if incoming_message == "2":
                 update_seller_decision(seller_deal.get("id"), "wait_better_offer")
                 update_deal_status(seller_deal.get("id"), "seller_waiting")
-
-                send_whatsapp_message(
-                    sender_phone,
-                    translate(sender_phone, "seller_waiting_better_offer"),
-                )
-
+                send_whatsapp_message(sender_phone, translate(sender_phone, "seller_waiting_better_offer"))
                 return {"status": "seller_waiting_for_better_offer"}
 
             if incoming_message == "3":
                 update_seller_decision(seller_deal.get("id"), "cancel")
                 update_deal_status(seller_deal.get("id"), "cancelled")
-
-                send_whatsapp_message(
-                    sender_phone,
-                    translate(sender_phone, "seller_cancelled_deal"),
-                )
-
+                send_whatsapp_message(sender_phone, translate(sender_phone, "seller_cancelled_deal"))
                 return {"status": "seller_cancelled_deal"}
 
         if incoming_message.lower() in ["yes", "1"]:
@@ -1472,10 +1380,7 @@ async def receive_message(request: Request):
             listing = get_listing_by_id(deal.get("listing_id"))
 
             if not listing:
-                send_whatsapp_message(
-                    sender_phone,
-                    "Deal found, but listing details are missing.",
-                )
+                send_whatsapp_message(sender_phone, "Deal found, but listing details are missing.")
                 return {"status": "listing_missing"}
 
             seller_phone = deal.get("seller_phone") or listing.get("seller_phone")
@@ -1486,10 +1391,7 @@ async def receive_message(request: Request):
 
             buyer_name = get_display_name(buyer_phone)
 
-            send_whatsapp_message(
-                buyer_phone,
-                translate(buyer_phone, "buyer_interest_received"),
-            )
+            send_whatsapp_message(buyer_phone, translate(buyer_phone, "buyer_interest_received"))
 
             seller_prompt = translate(
                 seller_phone,
@@ -1527,12 +1429,7 @@ async def receive_message(request: Request):
             if deal:
                 update_buyer_decision(deal.get("id"), "not_interested")
                 update_deal_status(deal.get("id"), "buyer_declined")
-
-                send_whatsapp_message(
-                    sender_phone,
-                    translate(sender_phone, "buyer_declined"),
-                )
-
+                send_whatsapp_message(sender_phone, translate(sender_phone, "buyer_declined"))
                 return {"status": "buyer_declined"}
 
             show_main_menu(sender_phone)
@@ -1549,11 +1446,11 @@ async def receive_message(request: Request):
         today_count = count_today_listings_by_seller(sender_phone)
 
         if today_count >= DAILY_LISTING_LIMIT:
-            send_whatsapp_message(
-                sender_phone,
-                translate(sender_phone, "daily_limit_reached"),
-            )
-            return {"status": "daily_limit_reached", "limit": DAILY_LISTING_LIMIT}
+            send_whatsapp_message(sender_phone, translate(sender_phone, "daily_limit_reached"))
+            return {
+                "status": "daily_limit_reached",
+                "limit": DAILY_LISTING_LIMIT,
+            }
 
         extracted = extract_market_data(
             incoming_message,
@@ -1567,12 +1464,12 @@ async def receive_message(request: Request):
         print("\n========== EXTRACTED MARKET DATA ==========")
         print(extracted)
 
-        return prepare_listing_for_confirmation(
-            sender_phone,
-            extracted,
-            original_step,
-        )
+        return prepare_listing_for_confirmation(sender_phone, extracted, original_step)
 
     except Exception as e:
         print("Webhook error:", e)
-        return {"status": "error", "message": str(e)}
+
+        return {
+            "status": "error",
+            "message": str(e),
+        }
