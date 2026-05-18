@@ -63,6 +63,11 @@ from app.services.location_pin_service import (
     build_location_pin_reply,
     filter_matches_within_radius,
 )
+from app.services.transport_pooling_service import (
+    check_and_notify_transport_pooling,
+    handle_pool_interest,
+    handle_pool_ignore,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -307,6 +312,12 @@ def normalize_command(message: str):
         return message
 
     if message.startswith("fulfill_request_"):
+        return message
+
+    if message.startswith("pool_interest_"):
+        return message
+
+    if message.startswith("pool_ignore_"):
         return message
 
     command_map = {
@@ -781,6 +792,30 @@ def send_active_request_buttons(phone: str):
     return sent_count
 
 
+def handle_transport_pool_action(sender_phone: str, incoming_message: str):
+    if incoming_message.startswith("pool_interest_"):
+        suggestion_id = incoming_message.replace("pool_interest_", "").strip()
+
+        handle_pool_interest(
+            phone=sender_phone,
+            suggestion_id=suggestion_id,
+        )
+
+        return True
+
+    if incoming_message.startswith("pool_ignore_"):
+        suggestion_id = incoming_message.replace("pool_ignore_", "").strip()
+
+        handle_pool_ignore(
+            phone=sender_phone,
+            suggestion_id=suggestion_id,
+        )
+
+        return True
+
+    return False
+
+
 def handle_request_action(phone: str, incoming_message: str):
     if incoming_message.startswith("cancel_request_"):
         listing_id = incoming_message.replace("cancel_request_", "").strip()
@@ -1057,6 +1092,9 @@ async def receive_message(request: Request):
         if is_blocked_user(sender_phone):
             return {"status": "blocked_user_ignored"}
 
+        if handle_transport_pool_action(sender_phone, incoming_message):
+            return {"status": "transport_pool_action_handled"}
+
         if handle_request_action(sender_phone, incoming_message):
             return {"status": "request_action_handled"}
 
@@ -1292,6 +1330,13 @@ async def receive_message(request: Request):
                 update_seller_decision(seller_deal.get("id"), "share_contacts")
                 update_deal_status(seller_deal.get("id"), "confirmed")
                 schedule_deal_feedback(seller_deal.get("id"))
+
+                pooling_result = check_and_notify_transport_pooling(
+                    deal=seller_deal,
+                    listing=listing,
+                )
+
+                print("TRANSPORT POOLING RESULT:", pooling_result)
 
                 buyer_phone = seller_deal.get("buyer_phone")
                 seller_phone = seller_deal.get("seller_phone")
