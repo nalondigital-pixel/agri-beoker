@@ -876,3 +876,404 @@ def transport_dashboard(request: Request):
     """
 
     return HTMLResponse(html)
+
+@router.get("/transporters")
+def transporters_dashboard(request: Request):
+    password = request.query_params.get("password")
+
+    if password != DASHBOARD_PASSWORD:
+        return HTMLResponse(
+            """
+            <html>
+                <body style="font-family: Arial; padding: 30px;">
+                    <h2>Transporters Login</h2>
+                    <form method="get" action="/dashboard/transporters">
+                        <input 
+                            type="password" 
+                            name="password" 
+                            placeholder="Dashboard password"
+                            style="padding: 10px; width: 250px;"
+                        />
+                        <button type="submit" style="padding: 10px;">Open</button>
+                    </form>
+                </body>
+            </html>
+            """
+        )
+
+    transporters_response = (
+        supabase.table("verified_transporters")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(200)
+        .execute()
+    )
+
+    jobs_response = (
+        supabase.table("transporter_job_requests")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(100)
+        .execute()
+    )
+
+    transporters = transporters_response.data or []
+    jobs = jobs_response.data or []
+
+    transporter_rows = ""
+
+    for transporter in transporters:
+        checked_verified = "checked" if transporter.get("is_verified") else ""
+        checked_active = "checked" if transporter.get("is_active") else ""
+
+        transporter_rows += f"""
+        <tr>
+            <td>{transporter.get("created_at", "")}</td>
+            <td>{transporter.get("phone", "")}</td>
+            <td>{transporter.get("name", "")}</td>
+            <td>{transporter.get("base_location", "")}</td>
+            <td>{transporter.get("vehicle_type", "")}</td>
+            <td>{transporter.get("vehicle_capacity", "")} {transporter.get("capacity_unit", "")}</td>
+            <td>{transporter.get("rating", 0)}</td>
+            <td>{transporter.get("total_jobs", 0)}</td>
+            <td>
+                <form method="post" action="/dashboard/transporters/toggle-verified" style="display:inline;">
+                    <input type="hidden" name="password" value="{password}" />
+                    <input type="hidden" name="phone" value="{transporter.get("phone", "")}" />
+                    <input type="hidden" name="current_value" value="{str(transporter.get("is_verified")).lower()}" />
+                    <button type="submit">
+                        {"Verified" if transporter.get("is_verified") else "Not Verified"}
+                    </button>
+                </form>
+            </td>
+            <td>
+                <form method="post" action="/dashboard/transporters/toggle-active" style="display:inline;">
+                    <input type="hidden" name="password" value="{password}" />
+                    <input type="hidden" name="phone" value="{transporter.get("phone", "")}" />
+                    <input type="hidden" name="current_value" value="{str(transporter.get("is_active")).lower()}" />
+                    <button type="submit">
+                        {"Active" if transporter.get("is_active") else "Inactive"}
+                    </button>
+                </form>
+            </td>
+        </tr>
+        """
+
+    job_rows = ""
+
+    for job in jobs:
+        job_rows += f"""
+        <tr>
+            <td>{job.get("created_at", "")}</td>
+            <td>{job.get("transporter_phone", "")}</td>
+            <td>{job.get("origin", "")}</td>
+            <td>{job.get("destination", "")}</td>
+            <td>{job.get("total_quantity", "")} {job.get("unit", "")}</td>
+            <td>{job.get("status", "")}</td>
+        </tr>
+        """
+
+    html = f"""
+    <html>
+        <head>
+            <title>Verified Transporters</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background: #f5f7f5;
+                    padding: 24px;
+                    color: #1f2933;
+                }}
+
+                h1, h2 {{
+                    color: #14532d;
+                }}
+
+                .nav {{
+                    margin-bottom: 20px;
+                }}
+
+                .nav a {{
+                    margin-right: 12px;
+                    color: #166534;
+                    text-decoration: none;
+                    font-weight: bold;
+                }}
+
+                .card {{
+                    background: white;
+                    padding: 18px;
+                    border-radius: 10px;
+                    margin-bottom: 24px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                }}
+
+                label {{
+                    font-size: 13px;
+                    font-weight: bold;
+                    display: block;
+                    margin-bottom: 5px;
+                    color: #374151;
+                }}
+
+                input, select {{
+                    padding: 10px;
+                    width: 100%;
+                    box-sizing: border-box;
+                    margin-bottom: 12px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 6px;
+                }}
+
+                .grid {{
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 12px;
+                }}
+
+                button {{
+                    background: #166534;
+                    color: white;
+                    border: none;
+                    padding: 9px 12px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                }}
+
+                button:hover {{
+                    background: #14532d;
+                }}
+
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: white;
+                    margin-bottom: 32px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+                }}
+
+                th {{
+                    background: #166534;
+                    color: white;
+                    text-align: left;
+                    padding: 10px;
+                    font-size: 13px;
+                }}
+
+                td {{
+                    padding: 10px;
+                    border-bottom: 1px solid #e5e7eb;
+                    font-size: 13px;
+                    vertical-align: top;
+                }}
+
+                .metric {{
+                    display: inline-block;
+                    margin-right: 20px;
+                    background: #dcfce7;
+                    padding: 10px 14px;
+                    border-radius: 8px;
+                    color: #14532d;
+                    font-weight: bold;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="nav">
+                <a href="/dashboard/?password={password}">Main Dashboard</a>
+                <a href="/dashboard/transport?password={password}">Transport Pools</a>
+                <a href="/dashboard/transporters?password={password}">Transporters</a>
+            </div>
+
+            <h1>🚛 Verified Transporters</h1>
+
+            <div class="card">
+                <span class="metric">Transporters: {len(transporters)}</span>
+                <span class="metric">
+                    Verified: {len([t for t in transporters if t.get("is_verified")])}
+                </span>
+                <span class="metric">
+                    Active: {len([t for t in transporters if t.get("is_active")])}
+                </span>
+                <span class="metric">Job Requests: {len(jobs)}</span>
+            </div>
+
+            <div class="card">
+                <h2>Add / Update Transporter</h2>
+
+                <form method="post" action="/dashboard/transporters/save">
+                    <input type="hidden" name="password" value="{password}" />
+
+                    <div class="grid">
+                        <div>
+                            <label>Phone</label>
+                            <input name="phone" placeholder="26377xxxxxxx" required />
+                        </div>
+
+                        <div>
+                            <label>Name</label>
+                            <input name="name" placeholder="Transporter name" />
+                        </div>
+
+                        <div>
+                            <label>Base Location</label>
+                            <input name="base_location" placeholder="Harare, Chegutu, Kadoma..." />
+                        </div>
+
+                        <div>
+                            <label>Vehicle Type</label>
+                            <input name="vehicle_type" placeholder="1 tonne truck, pickup, lorry..." />
+                        </div>
+
+                        <div>
+                            <label>Capacity</label>
+                            <input name="vehicle_capacity" type="number" step="0.01" placeholder="1000" />
+                        </div>
+
+                        <div>
+                            <label>Capacity Unit</label>
+                            <select name="capacity_unit">
+                                <option value="kg">kg</option>
+                                <option value="tonnes">tonnes</option>
+                                <option value="boxes">boxes</option>
+                                <option value="bags">bags</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label>
+                        <input type="checkbox" name="is_verified" value="true" style="width:auto;" />
+                        Verified transporter
+                    </label>
+
+                    <button type="submit">Save Transporter</button>
+                </form>
+            </div>
+
+            <h2>Transporters</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Phone</th>
+                        <th>Name</th>
+                        <th>Base</th>
+                        <th>Vehicle</th>
+                        <th>Capacity</th>
+                        <th>Rating</th>
+                        <th>Jobs</th>
+                        <th>Verified</th>
+                        <th>Active</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {transporter_rows or '<tr><td colspan="10">No transporters yet.</td></tr>'}
+                </tbody>
+            </table>
+
+            <h2>Recent Transporter Job Requests</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Transporter</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Load</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {job_rows or '<tr><td colspan="6">No job requests yet.</td></tr>'}
+                </tbody>
+            </table>
+        </body>
+    </html>
+    """
+
+    return HTMLResponse(html)
+
+
+@router.post("/transporters/save")
+def save_transporter_from_dashboard(
+    password: str = Form(...),
+    phone: str = Form(...),
+    name: str = Form(""),
+    base_location: str = Form(""),
+    vehicle_type: str = Form(""),
+    vehicle_capacity: str = Form("0"),
+    capacity_unit: str = Form("kg"),
+    is_verified: str = Form(None),
+):
+    if password != DASHBOARD_PASSWORD:
+        return HTMLResponse("Unauthorized", status_code=401)
+
+    from app.services.transporter_service import register_or_update_transporter
+
+    try:
+        capacity = float(vehicle_capacity or 0)
+    except Exception:
+        capacity = 0
+
+    verified = bool(is_verified)
+
+    register_or_update_transporter(
+        phone=phone,
+        name=name,
+        base_location=base_location,
+        vehicle_type=vehicle_type,
+        vehicle_capacity=capacity,
+        capacity_unit=capacity_unit,
+        is_verified=verified,
+    )
+
+    return RedirectResponse(
+        url=f"/dashboard/transporters?password={password}",
+        status_code=303,
+    )
+
+
+@router.post("/transporters/toggle-verified")
+def toggle_transporter_verified(
+    password: str = Form(...),
+    phone: str = Form(...),
+    current_value: str = Form("false"),
+):
+    if password != DASHBOARD_PASSWORD:
+        return HTMLResponse("Unauthorized", status_code=401)
+
+    current_bool = str(current_value).lower() == "true"
+    new_value = not current_bool
+
+    supabase.table("verified_transporters").update({
+        "is_verified": new_value,
+    }).eq("phone", phone).execute()
+
+    return RedirectResponse(
+        url=f"/dashboard/transporters?password={password}",
+        status_code=303,
+    )
+
+
+@router.post("/transporters/toggle-active")
+def toggle_transporter_active(
+    password: str = Form(...),
+    phone: str = Form(...),
+    current_value: str = Form("false"),
+):
+    if password != DASHBOARD_PASSWORD:
+        return HTMLResponse("Unauthorized", status_code=401)
+
+    current_bool = str(current_value).lower() == "true"
+    new_value = not current_bool
+
+    supabase.table("verified_transporters").update({
+        "is_active": new_value,
+    }).eq("phone", phone).execute()
+
+    return RedirectResponse(
+        url=f"/dashboard/transporters?password={password}",
+        status_code=303,
+    )

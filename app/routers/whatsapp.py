@@ -72,6 +72,11 @@ from app.services.transporter_service import (
     handle_transporter_accept,
     handle_transporter_decline,
 )
+from app.services.transporter_registration_service import (
+    is_transporter_registration_command,
+    start_transporter_registration,
+    handle_transporter_registration_message,
+)
 
 router = APIRouter(prefix="/webhooks/whatsapp", tags=["WhatsApp"])
 
@@ -1098,10 +1103,11 @@ async def receive_message(request: Request):
                 "create_sell_listing",
                 "collect_missing_listing_field",
                 "confirm_listing",
+                "transporter_registration",
             ]:
                 send_whatsapp_message(
                     sender_phone,
-                    "Now send the product details. Example: 20 kg beef for $80",
+                    "Location saved. Now continue with the details.",
                 )
 
             return {
@@ -1134,6 +1140,26 @@ async def receive_message(request: Request):
 
         if handle_request_action(sender_phone, incoming_message):
             return {"status": "request_action_handled"}
+
+        session = get_session(sender_phone)
+
+        if is_transporter_registration_command(incoming_message):
+            reply = start_transporter_registration(sender_phone)
+            send_whatsapp_message(sender_phone, reply)
+            return {"status": "transporter_registration_started"}
+
+        if session and session.get("current_step") == "transporter_registration":
+            result = handle_transporter_registration_message(
+                sender_phone,
+                incoming_message,
+            )
+
+            if result.get("handled"):
+                send_whatsapp_message(sender_phone, result.get("reply"))
+                return {
+                    "status": "transporter_registration_flow",
+                    "done": result.get("done"),
+                }
 
         feedback_result = handle_feedback_response(sender_phone, incoming_message)
 
