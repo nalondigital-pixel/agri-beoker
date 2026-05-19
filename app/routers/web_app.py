@@ -1,7 +1,7 @@
 from html import escape
 
 from fastapi import APIRouter, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from app.services.db_service import save_listing
@@ -56,6 +56,13 @@ def icon(name: str):
             <path d="M8 10H12M16 10H12M8 14H12M16 14H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
         """,
+        "target": """
+        <svg viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
+            <circle cx="12" cy="12" r="1" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        """,
         "shield": """
         <svg viewBox="0 0 24 24" fill="none">
             <path d="M12 3L20 6V11C20 16 16.5 20 12 21C7.5 20 4 16 4 11V6L12 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -69,13 +76,6 @@ def icon(name: str):
             <path d="M8 16V11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M12 16V8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             <path d="M16 16V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        """,
-        "target": """
-        <svg viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="12" r="1" stroke="currentColor" stroke-width="2"/>
         </svg>
         """,
         "bolt": """
@@ -314,16 +314,6 @@ def page_layout(title: str, body: str):
                 animation: fadeUp 0.8s ease;
             }
 
-            .hero::before {
-                content: "";
-                position: absolute;
-                inset: 0;
-                background:
-                    radial-gradient(circle at 20% 20%, rgba(255,255,255,0.15), transparent 20%),
-                    radial-gradient(circle at 80% 30%, rgba(255,255,255,0.12), transparent 18%);
-                z-index: -1;
-            }
-
             .hero h1 {
                 font-size: clamp(34px, 5vw, 58px);
                 line-height: 1.02;
@@ -367,26 +357,10 @@ def page_layout(title: str, body: str):
                 overflow: hidden;
             }
 
-            .button::before {
-                content: "";
-                position: absolute;
-                top: 0;
-                left: -120%;
-                width: 70%;
-                height: 100%;
-                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
-                transform: skewX(-20deg);
-                transition: left 0.55s ease;
-            }
-
             .button:hover {
                 transform: translateY(-4px) scale(1.03);
                 box-shadow: 0 18px 36px rgba(22,163,74,0.38);
                 filter: brightness(1.05);
-            }
-
-            .button:hover::before {
-                left: 140%;
             }
 
             .button.secondary {
@@ -701,11 +675,6 @@ def page_layout(title: str, body: str):
                 color: white;
             }
 
-            .chatbot-title .svg-icon {
-                width: 22px;
-                height: 22px;
-            }
-
             .chatbot-close {
                 background: rgba(255,255,255,0.14);
                 border: 1px solid rgba(255,255,255,0.18);
@@ -715,11 +684,6 @@ def page_layout(title: str, body: str):
                 border-radius: 12px;
                 cursor: pointer;
                 font-size: 18px;
-                transition: transform 0.2s ease;
-            }
-
-            .chatbot-close:hover {
-                transform: scale(1.08);
             }
 
             .chatbot-messages {
@@ -768,12 +732,6 @@ def page_layout(title: str, body: str):
                 padding: 8px 10px;
                 font-size: 12px;
                 cursor: pointer;
-                transition: all 0.2s ease;
-            }
-
-            .chatbot-suggestion:hover {
-                background: rgba(255,255,255,0.14);
-                transform: translateY(-2px);
             }
 
             .chatbot-input-row {
@@ -795,15 +753,9 @@ def page_layout(title: str, body: str):
                 background: linear-gradient(135deg, var(--primary), var(--accent));
                 color: white;
                 cursor: pointer;
-                font-weight: 800;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                transition: transform 0.2s ease;
-            }
-
-            .chatbot-send:hover {
-                transform: translateY(-2px);
             }
 
             .chatbot-send .svg-icon {
@@ -886,7 +838,6 @@ def page_layout(title: str, body: str):
                     <a href="/web/sell">Sell</a>
                     <a href="/web/buy">Buy</a>
                     <a href="/web/transporter">Transporter</a>
-                    <a href="/web/portfolio">Portfolio</a>
                 </div>
             </div>
         </div>
@@ -1115,11 +1066,11 @@ def web_home():
             <span class="badge">{icon("shield")} Trust scoring</span>
             <span class="badge">{icon("chart")} Admin dashboard</span>
             <span class="badge">{icon("bolt")} WhatsApp-ready backend</span>
-            <span class="badge">{icon("globe")} Web portfolio version</span>
+            <span class="badge">{icon("globe")} Web app version</span>
         </div>
 
         <p class="muted" style="margin-top: 18px;">
-            This web version showcases the Agri Broker concept as a polished, portfolio-ready SaaS product
+            This web version showcases the Agri Broker concept as a polished, SaaS-style product
             while keeping the backend ready for messaging, data capture, matching, and logistics automation.
         </p>
     </section>
@@ -1134,8 +1085,7 @@ def sell_form():
     <section class="card reveal">
         <h2>Sell Produce</h2>
         <p class="muted">
-            Enter the details of what you are selling. The platform stores your listing
-            and prepares it for future matching workflows.
+            Enter the details of what you are selling.
         </p>
 
         <form method="post" action="/web/sell">
@@ -1269,10 +1219,6 @@ def submit_sell(
     except Exception as e:
         print("Profile web upsert error:", e)
 
-    safe_name = escape(name)
-    safe_commodity = escape(commodity)
-    safe_location = escape(normalized_location or location)
-
     body = f"""
     <section class="success">
         <h2>Listing submitted successfully</h2>
@@ -1281,10 +1227,10 @@ def submit_sell(
 
     <section class="card reveal">
         <h3>Listing Summary</h3>
-        <p><strong>Seller:</strong> {safe_name}</p>
-        <p><strong>Commodity:</strong> {safe_commodity}</p>
+        <p><strong>Seller:</strong> {escape(name)}</p>
+        <p><strong>Commodity:</strong> {escape(commodity)}</p>
         <p><strong>Quantity:</strong> {quantity} {escape(unit)}</p>
-        <p><strong>Location:</strong> {safe_location}</p>
+        <p><strong>Location:</strong> {escape(normalized_location or location)}</p>
         <p><strong>Price:</strong> {escape(currency)} {price_value if price_value else "Not specified"}</p>
         <p><strong>Status:</strong> Active</p>
 
@@ -1437,10 +1383,6 @@ def submit_buy(
     except Exception as e:
         print("Profile web upsert error:", e)
 
-    safe_name = escape(name)
-    safe_commodity = escape(commodity)
-    safe_location = escape(normalized_location or location)
-
     body = f"""
     <section class="success">
         <h2>Buy request submitted successfully</h2>
@@ -1449,10 +1391,10 @@ def submit_buy(
 
     <section class="card reveal">
         <h3>Request Summary</h3>
-        <p><strong>Buyer:</strong> {safe_name}</p>
-        <p><strong>Commodity:</strong> {safe_commodity}</p>
+        <p><strong>Buyer:</strong> {escape(name)}</p>
+        <p><strong>Commodity:</strong> {escape(commodity)}</p>
         <p><strong>Quantity:</strong> {quantity} {escape(unit)}</p>
-        <p><strong>Location:</strong> {safe_location}</p>
+        <p><strong>Location:</strong> {escape(normalized_location or location)}</p>
         <p><strong>Budget:</strong> {escape(currency)} {price_value if price_value else "Not specified"}</p>
         <p><strong>Status:</strong> Active</p>
 
@@ -1570,15 +1512,26 @@ def submit_transporter(
 
 
 @router.get("/portfolio")
-def portfolio_page():
+def old_portfolio_redirect():
+    return RedirectResponse(url="/web/case-study", status_code=302)
+
+
+@router.get("/case-study")
+def case_study_page():
     body = f"""
     <section class="hero">
-        <h1>Portfolio Case Study: Agri Broker</h1>
+        <h1>Case Study: Agri Broker</h1>
         <p>
             A full-stack AI-powered agriculture marketplace built with FastAPI,
             Supabase, matching workflows, admin dashboards, and a polished
-            web experience designed for both product demos and job applications.
+            web experience designed for product demos and job applications.
         </p>
+
+        <div class="actions">
+            <a class="button" href="/web">{icon("globe")} View Product Demo</a>
+            <a class="button secondary" href="/web/sell">{icon("store")} Try Seller Flow</a>
+            <a class="button secondary" href="/web/buy">{icon("cart")} Try Buyer Flow</a>
+        </div>
     </section>
 
     <section class="grid-2 reveal" style="margin-top: 28px;">
@@ -1587,8 +1540,8 @@ def portfolio_page():
             <h2>Problem</h2>
             <p class="muted">
                 Farmers, buyers, and transporters struggle with market access,
-                trust, logistics coordination, and finding structured, efficient
-                ways to do business.
+                trust, logistics coordination, and structured digital workflows.
+                Most activity happens informally through calls and WhatsApp messages.
             </p>
         </div>
 
@@ -1597,19 +1550,20 @@ def portfolio_page():
             <h2>Solution</h2>
             <p class="muted">
                 Agri Broker digitizes buyer-seller workflows with listing capture,
-                request capture, transporter onboarding, and operational dashboards.
+                request capture, transporter onboarding, AI assistance, matching logic,
+                and operational dashboards.
             </p>
         </div>
     </section>
 
     <section class="card reveal" style="margin-top: 28px;">
-        <h2>Key Features</h2>
+        <h2>Key Features Built</h2>
         <div style="margin-top: 10px;">
             <span class="badge">{icon("bolt")} FastAPI backend</span>
             <span class="badge">{icon("globe")} Supabase database</span>
-            <span class="badge">{icon("brain")} AI extraction</span>
+            <span class="badge">{icon("brain")} Gemini AI assistant</span>
             <span class="badge">{icon("target")} Smart matching</span>
-            <span class="badge">{icon("truck")} Transport pooling</span>
+            <span class="badge">{icon("truck")} Transporter onboarding</span>
             <span class="badge">{icon("shield")} Trust and reporting</span>
             <span class="badge">{icon("chart")} Admin dashboard</span>
             <span class="badge">{icon("globe")} Responsive web app</span>
@@ -1622,8 +1576,8 @@ def portfolio_page():
             <h2>Tech Stack</h2>
             <p><strong>Backend:</strong> FastAPI, Python</p>
             <p><strong>Database:</strong> Supabase / PostgreSQL</p>
-            <p><strong>AI:</strong> Gemini-powered extraction logic</p>
-            <p><strong>Frontend:</strong> Server-rendered interactive web UI</p>
+            <p><strong>AI:</strong> Gemini-powered assistant and extraction logic</p>
+            <p><strong>Frontend:</strong> Server-rendered interactive SaaS-style UI</p>
             <p><strong>Deployment:</strong> Render</p>
         </div>
 
@@ -1632,29 +1586,20 @@ def portfolio_page():
             <p class="muted">
                 The system is designed to help farmers find buyers, buyers find stock,
                 and transporters find delivery opportunities while laying the foundation
-                for monetization via premium visibility, lead access, and verified logistics.
+                for monetization through premium visibility, lead access, and verified logistics.
             </p>
-        </div>
-    </section>
-
-    <section class="card reveal" style="margin-top: 28px;">
-        <h2>Demo Links</h2>
-        <div class="actions">
-            <a class="button" href="/web/sell">{icon("store")} Seller Demo</a>
-            <a class="button secondary" href="/web/buy">{icon("cart")} Buyer Demo</a>
-            <a class="button secondary" href="/web/transporter">{icon("truck")} Transporter Demo</a>
-            <a class="button secondary" href="/dashboard/ping">{icon("chart")} Backend Health</a>
         </div>
     </section>
 
     <section class="card reveal" style="margin-top: 28px;">
         <h2>Portfolio Pitch</h2>
         <p class="muted">
-            “I built Agri Broker as a production-style full-stack SaaS platform. It includes database design,
-            API development, web application UI, AI-powered data extraction, structured workflows, dashboarding,
-            and deployment architecture for a real-world agriculture marketplace.”
+            I built Agri Broker as a production-style full-stack SaaS platform. It includes
+            database design, API development, web application UI, AI-powered workflows,
+            structured forms, dashboarding, and deployment architecture for a real-world
+            agriculture marketplace.
         </p>
     </section>
     """
 
-    return HTMLResponse(page_layout("Agri Broker Portfolio Case Study", body))
+    return HTMLResponse(page_layout("Agri Broker Case Study", body))
