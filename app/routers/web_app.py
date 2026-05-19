@@ -2,14 +2,20 @@ from html import escape
 
 from fastapi import APIRouter, Form
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 from app.services.db_service import save_listing
 from app.services.transporter_service import register_or_update_transporter
 from app.services.location_normalizer_service import normalize_location_name
+from app.services.ai_assistant_service import generate_ai_assistant_reply
 from app.db.supabase_client import supabase
 
 
 router = APIRouter(prefix="/web", tags=["Public Web App"])
+
+
+class WebChatRequest(BaseModel):
+    message: str
 
 
 def icon(name: str):
@@ -84,22 +90,52 @@ def icon(name: str):
             <path d="M12 3C15 6 15 18 12 21C9 18 9 6 12 3Z" stroke="currentColor" stroke-width="2"/>
         </svg>
         """,
+        "send": """
+        <svg viewBox="0 0 24 24" fill="none">
+            <path d="M21 3L10 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M21 3L14 21L10 14L3 10L21 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        """,
     }
 
     return f'<span class="svg-icon">{icons.get(name, icons["leaf"])}</span>'
 
 
+@router.post("/chat")
+def web_chat(request: WebChatRequest):
+    user_message = (request.message or "").strip()
+
+    if not user_message:
+        return {"reply": "Please type a question first."}
+
+    try:
+        reply = generate_ai_assistant_reply(
+            user_message=user_message,
+            user_name="website visitor",
+            user_language="english",
+        )
+        return {"reply": reply}
+    except Exception as e:
+        print("Web chatbot error:", e)
+        return {
+            "reply": (
+                "I can help with Agri Broker, buying, selling, transporter registration, "
+                "and how the platform works. Please try asking again."
+            )
+        }
+
+
 def page_layout(title: str, body: str):
-    return f"""
+    template = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
-        <title>{title}</title>
+        <title>__TITLE__</title>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
         <style>
-            :root {{
+            :root {
                 --bg: #07111f;
                 --card: rgba(255,255,255,0.08);
                 --text: #eaf2ff;
@@ -107,22 +143,23 @@ def page_layout(title: str, body: str):
                 --primary: #16a34a;
                 --primary-2: #22c55e;
                 --accent: #38bdf8;
+                --purple: #7c3aed;
                 --border: rgba(255,255,255,0.12);
                 --shadow: 0 20px 60px rgba(0,0,0,0.35);
                 --radius: 22px;
-            }}
+            }
 
-            * {{
+            * {
                 box-sizing: border-box;
                 margin: 0;
                 padding: 0;
-            }}
+            }
 
-            html {{
+            html {
                 scroll-behavior: smooth;
-            }}
+            }
 
-            body {{
+            body {
                 font-family: Inter, Arial, sans-serif;
                 background:
                     radial-gradient(circle at 10% 20%, rgba(34,197,94,0.14), transparent 25%),
@@ -132,9 +169,9 @@ def page_layout(title: str, body: str):
                 color: var(--text);
                 min-height: 100vh;
                 overflow-x: hidden;
-            }}
+            }
 
-            .bg-orb {{
+            .bg-orb {
                 position: fixed;
                 width: 320px;
                 height: 320px;
@@ -144,34 +181,34 @@ def page_layout(title: str, body: str):
                 z-index: 0;
                 animation: floatBlob 14s ease-in-out infinite;
                 pointer-events: none;
-            }}
+            }
 
-            .orb-1 {{
+            .orb-1 {
                 top: -80px;
                 left: -90px;
                 background: #22c55e;
-            }}
+            }
 
-            .orb-2 {{
+            .orb-2 {
                 top: 120px;
                 right: -100px;
                 background: #38bdf8;
                 animation-delay: 2s;
-            }}
+            }
 
-            .orb-3 {{
+            .orb-3 {
                 bottom: -100px;
                 left: 25%;
                 background: #7c3aed;
                 animation-delay: 4s;
-            }}
+            }
 
-            @keyframes floatBlob {{
-                0%,100% {{ transform: translateY(0px) translateX(0px) scale(1); }}
-                50% {{ transform: translateY(18px) translateX(12px) scale(1.05); }}
-            }}
+            @keyframes floatBlob {
+                0%,100% { transform: translateY(0px) translateX(0px) scale(1); }
+                50% { transform: translateY(18px) translateX(12px) scale(1.05); }
+            }
 
-            .svg-icon {{
+            .svg-icon {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -179,24 +216,24 @@ def page_layout(title: str, body: str):
                 height: 20px;
                 color: currentColor;
                 flex-shrink: 0;
-            }}
+            }
 
-            .svg-icon svg {{
+            .svg-icon svg {
                 width: 100%;
                 height: 100%;
                 display: block;
-            }}
+            }
 
-            .nav-wrap {{
+            .nav-wrap {
                 position: sticky;
                 top: 0;
                 z-index: 50;
                 backdrop-filter: blur(16px);
                 background: rgba(7,17,31,0.65);
                 border-bottom: 1px solid rgba(255,255,255,0.08);
-            }}
+            }
 
-            .nav {{
+            .nav {
                 max-width: 1200px;
                 margin: 0 auto;
                 padding: 18px 24px;
@@ -204,9 +241,9 @@ def page_layout(title: str, body: str):
                 align-items: center;
                 justify-content: space-between;
                 gap: 20px;
-            }}
+            }
 
-            .brand {{
+            .brand {
                 display: flex;
                 align-items: center;
                 gap: 12px;
@@ -215,9 +252,9 @@ def page_layout(title: str, body: str):
                 color: white;
                 text-decoration: none;
                 letter-spacing: -0.4px;
-            }}
+            }
 
-            .brand-badge {{
+            .brand-badge {
                 width: 42px;
                 height: 42px;
                 display: inline-flex;
@@ -227,20 +264,20 @@ def page_layout(title: str, body: str):
                 background: linear-gradient(135deg, var(--primary), var(--accent));
                 box-shadow: 0 10px 30px rgba(34,197,94,0.35);
                 color: white;
-            }}
+            }
 
-            .brand-badge .svg-icon {{
+            .brand-badge .svg-icon {
                 width: 24px;
                 height: 24px;
-            }}
+            }
 
-            .nav-links {{
+            .nav-links {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 10px;
-            }}
+            }
 
-            .nav-links a {{
+            .nav-links a {
                 color: #dbeafe;
                 text-decoration: none;
                 padding: 10px 14px;
@@ -248,23 +285,23 @@ def page_layout(title: str, body: str):
                 font-size: 14px;
                 font-weight: 600;
                 transition: all 0.25s ease;
-            }}
+            }
 
-            .nav-links a:hover {{
+            .nav-links a:hover {
                 background: rgba(255,255,255,0.08);
                 transform: translateY(-2px);
                 color: white;
-            }}
+            }
 
-            .container {{
+            .container {
                 position: relative;
                 z-index: 1;
                 max-width: 1200px;
                 margin: 0 auto;
                 padding: 30px 24px 50px;
-            }}
+            }
 
-            .hero {{
+            .hero {
                 position: relative;
                 overflow: hidden;
                 padding: 56px 36px;
@@ -275,9 +312,9 @@ def page_layout(title: str, body: str):
                 margin-bottom: 28px;
                 isolation: isolate;
                 animation: fadeUp 0.8s ease;
-            }}
+            }
 
-            .hero::before {{
+            .hero::before {
                 content: "";
                 position: absolute;
                 inset: 0;
@@ -285,32 +322,32 @@ def page_layout(title: str, body: str):
                     radial-gradient(circle at 20% 20%, rgba(255,255,255,0.15), transparent 20%),
                     radial-gradient(circle at 80% 30%, rgba(255,255,255,0.12), transparent 18%);
                 z-index: -1;
-            }}
+            }
 
-            .hero h1 {{
+            .hero h1 {
                 font-size: clamp(34px, 5vw, 58px);
                 line-height: 1.02;
                 letter-spacing: -1.2px;
                 margin-bottom: 16px;
                 color: white;
                 max-width: 780px;
-            }}
+            }
 
-            .hero p {{
+            .hero p {
                 max-width: 780px;
                 line-height: 1.7;
                 font-size: 18px;
                 color: rgba(255,255,255,0.92);
-            }}
+            }
 
-            .actions {{
+            .actions {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 14px;
                 margin-top: 28px;
-            }}
+            }
 
-            .button {{
+            .button {
                 position: relative;
                 display: inline-flex;
                 align-items: center;
@@ -328,9 +365,9 @@ def page_layout(title: str, body: str):
                 box-shadow: 0 12px 30px rgba(22,163,74,0.28);
                 transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
                 overflow: hidden;
-            }}
+            }
 
-            .button::before {{
+            .button::before {
                 content: "";
                 position: absolute;
                 top: 0;
@@ -340,80 +377,80 @@ def page_layout(title: str, body: str):
                 background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
                 transform: skewX(-20deg);
                 transition: left 0.55s ease;
-            }}
+            }
 
-            .button:hover {{
+            .button:hover {
                 transform: translateY(-4px) scale(1.03);
                 box-shadow: 0 18px 36px rgba(22,163,74,0.38);
                 filter: brightness(1.05);
-            }}
+            }
 
-            .button:hover::before {{
+            .button:hover::before {
                 left: 140%;
-            }}
+            }
 
-            .button.secondary {{
+            .button.secondary {
                 background: rgba(255,255,255,0.14);
                 color: white;
                 border: 1px solid rgba(255,255,255,0.22);
                 box-shadow: 0 10px 30px rgba(0,0,0,0.12);
-            }}
+            }
 
-            .stats {{
+            .stats {
                 display: grid;
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 16px;
                 margin: 26px 0 10px;
-            }}
+            }
 
-            .stat {{
+            .stat {
                 background: rgba(255,255,255,0.08);
                 border: 1px solid rgba(255,255,255,0.10);
                 border-radius: 18px;
                 padding: 18px;
                 backdrop-filter: blur(12px);
                 animation: fadeUp 0.9s ease;
-            }}
+            }
 
-            .stat .num {{
+            .stat .num {
                 font-size: 28px;
                 font-weight: 800;
                 color: white;
                 margin-bottom: 6px;
-            }}
+            }
 
-            .stat .label {{
+            .stat .label {
                 font-size: 13px;
                 color: rgba(255,255,255,0.82);
-            }}
+            }
 
-            .section-title {{
+            .section-title {
                 font-size: 30px;
                 letter-spacing: -0.8px;
                 margin-bottom: 8px;
                 color: white;
-            }}
+            }
 
-            .section-subtitle {{
+            .section-subtitle {
                 color: var(--muted);
                 margin-bottom: 22px;
                 line-height: 1.7;
-            }}
+            }
 
-            .grid {{
+            .grid {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 20px;
                 margin-top: 18px;
-            }}
+            }
 
-            .grid-2 {{
+            .grid-2 {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 20px;
-            }}
+            }
 
-            .card {{
+            .card {
                 background: rgba(255,255,255,0.08);
                 border: 1px solid var(--border);
                 backdrop-filter: blur(16px);
@@ -422,29 +459,29 @@ def page_layout(title: str, body: str):
                 box-shadow: var(--shadow);
                 transition: transform 0.3s ease, box-shadow 0.3s ease, border 0.3s ease;
                 animation: fadeUp 0.8s ease;
-            }}
+            }
 
-            .card:hover {{
+            .card:hover {
                 transform: translateY(-8px);
                 box-shadow: 0 24px 60px rgba(0,0,0,0.42);
                 border-color: rgba(255,255,255,0.18);
-            }}
+            }
 
             .card h2,
-            .card h3 {{
+            .card h3 {
                 color: white;
                 margin-bottom: 12px;
                 letter-spacing: -0.5px;
-            }}
+            }
 
             .card p,
-            .muted {{
+            .muted {
                 color: var(--muted);
                 line-height: 1.75;
                 font-size: 15px;
-            }}
+            }
 
-            .icon-box {{
+            .icon-box {
                 width: 54px;
                 height: 54px;
                 border-radius: 16px;
@@ -455,14 +492,14 @@ def page_layout(title: str, body: str):
                 background: linear-gradient(135deg, rgba(34,197,94,0.18), rgba(56,189,248,0.18));
                 border: 1px solid rgba(255,255,255,0.12);
                 color: #dbeafe;
-            }}
+            }
 
-            .icon-box .svg-icon {{
+            .icon-box .svg-icon {
                 width: 28px;
                 height: 28px;
-            }}
+            }
 
-            .success {{
+            .success {
                 background: linear-gradient(135deg, rgba(22,163,74,0.20), rgba(34,197,94,0.12));
                 border: 1px solid rgba(34,197,94,0.32);
                 padding: 20px;
@@ -471,9 +508,9 @@ def page_layout(title: str, body: str):
                 margin-bottom: 22px;
                 box-shadow: 0 18px 40px rgba(0,0,0,0.20);
                 animation: fadeUp 0.7s ease;
-            }}
+            }
 
-            .badge {{
+            .badge {
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
@@ -486,40 +523,40 @@ def page_layout(title: str, body: str):
                 font-size: 13px;
                 font-weight: 700;
                 transition: transform 0.25s ease, background 0.25s ease;
-            }}
+            }
 
-            .badge .svg-icon {{
+            .badge .svg-icon {
                 width: 16px;
                 height: 16px;
-            }}
+            }
 
-            .badge:hover {{
+            .badge:hover {
                 transform: translateY(-3px);
                 background: rgba(255,255,255,0.12);
-            }}
+            }
 
-            form {{
+            form {
                 margin-top: 8px;
-            }}
+            }
 
-            .field-row {{
+            .field-row {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 18px;
-            }}
+            }
 
-            label {{
+            label {
                 display: block;
                 font-size: 13px;
                 font-weight: 700;
                 color: #dbeafe;
                 margin-bottom: 8px;
                 letter-spacing: 0.2px;
-            }}
+            }
 
             input,
             select,
-            textarea {{
+            textarea {
                 width: 100%;
                 padding: 14px 15px;
                 border-radius: 16px;
@@ -530,98 +567,305 @@ def page_layout(title: str, body: str):
                 outline: none;
                 transition: all 0.25s ease;
                 margin-bottom: 16px;
-            }}
+            }
 
             input::placeholder,
-            textarea::placeholder {{
+            textarea::placeholder {
                 color: #8fa3be;
-            }}
+            }
 
-            select option {{
+            select option {
                 color: black;
-            }}
+            }
 
             input:focus,
             select:focus,
-            textarea:focus {{
+            textarea:focus {
                 border-color: rgba(56,189,248,0.55);
                 box-shadow: 0 0 0 4px rgba(56,189,248,0.14);
                 transform: translateY(-1px);
-            }}
+            }
 
-            textarea {{
+            textarea {
                 min-height: 110px;
                 resize: vertical;
-            }}
+            }
 
-            .footer {{
+            .footer {
                 padding: 24px;
                 text-align: center;
                 color: #8fa3be;
                 font-size: 14px;
-            }}
+            }
 
-            .reveal {{
+            .reveal {
                 opacity: 0;
                 transform: translateY(18px);
                 transition: all 0.7s ease;
-            }}
+            }
 
-            .reveal.visible {{
+            .reveal.visible {
                 opacity: 1;
                 transform: translateY(0);
-            }}
+            }
 
-            @keyframes fadeUp {{
-                from {{
+            @keyframes fadeUp {
+                from {
                     opacity: 0;
                     transform: translateY(24px);
-                }}
-                to {{
+                }
+                to {
                     opacity: 1;
                     transform: translateY(0);
-                }}
-            }}
+                }
+            }
 
-            @media (max-width: 980px) {{
-                .grid {{
+            .chatbot-launcher {
+                position: fixed;
+                right: 24px;
+                bottom: 24px;
+                z-index: 100;
+                width: 62px;
+                height: 62px;
+                border-radius: 22px;
+                border: 1px solid rgba(255,255,255,0.18);
+                background: linear-gradient(135deg, var(--primary), var(--accent));
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+                cursor: pointer;
+                transition: transform 0.25s ease, box-shadow 0.25s ease;
+            }
+
+            .chatbot-launcher:hover {
+                transform: translateY(-5px) scale(1.05);
+                box-shadow: 0 24px 50px rgba(34,197,94,0.35);
+            }
+
+            .chatbot-launcher .svg-icon {
+                width: 28px;
+                height: 28px;
+            }
+
+            .chatbot-panel {
+                position: fixed;
+                right: 24px;
+                bottom: 100px;
+                z-index: 100;
+                width: 380px;
+                max-width: calc(100vw - 32px);
+                height: 520px;
+                max-height: calc(100vh - 140px);
+                background: rgba(7,17,31,0.92);
+                border: 1px solid rgba(255,255,255,0.14);
+                border-radius: 26px;
+                box-shadow: 0 28px 80px rgba(0,0,0,0.48);
+                backdrop-filter: blur(22px);
+                overflow: hidden;
+                display: none;
+                flex-direction: column;
+                animation: chatPop 0.28s ease;
+            }
+
+            .chatbot-panel.open {
+                display: flex;
+            }
+
+            @keyframes chatPop {
+                from {
+                    opacity: 0;
+                    transform: translateY(14px) scale(0.96);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                }
+            }
+
+            .chatbot-header {
+                padding: 18px;
+                background: linear-gradient(135deg, rgba(22,163,74,0.9), rgba(56,189,248,0.7));
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+
+            .chatbot-title {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-weight: 800;
+                color: white;
+            }
+
+            .chatbot-title .svg-icon {
+                width: 22px;
+                height: 22px;
+            }
+
+            .chatbot-close {
+                background: rgba(255,255,255,0.14);
+                border: 1px solid rgba(255,255,255,0.18);
+                color: white;
+                width: 34px;
+                height: 34px;
+                border-radius: 12px;
+                cursor: pointer;
+                font-size: 18px;
+                transition: transform 0.2s ease;
+            }
+
+            .chatbot-close:hover {
+                transform: scale(1.08);
+            }
+
+            .chatbot-messages {
+                flex: 1;
+                padding: 16px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .chat-message {
+                padding: 12px 14px;
+                border-radius: 16px;
+                line-height: 1.55;
+                font-size: 14px;
+                max-width: 86%;
+                white-space: pre-wrap;
+            }
+
+            .chat-message.bot {
+                background: rgba(255,255,255,0.08);
+                color: #dbeafe;
+                border: 1px solid rgba(255,255,255,0.08);
+                align-self: flex-start;
+            }
+
+            .chat-message.user {
+                background: linear-gradient(135deg, var(--primary), var(--primary-2));
+                color: white;
+                align-self: flex-end;
+            }
+
+            .chatbot-suggestions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                padding: 0 16px 12px;
+            }
+
+            .chatbot-suggestion {
+                background: rgba(255,255,255,0.08);
+                color: #dbeafe;
+                border: 1px solid rgba(255,255,255,0.10);
+                border-radius: 999px;
+                padding: 8px 10px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+
+            .chatbot-suggestion:hover {
+                background: rgba(255,255,255,0.14);
+                transform: translateY(-2px);
+            }
+
+            .chatbot-input-row {
+                padding: 14px;
+                border-top: 1px solid rgba(255,255,255,0.10);
+                display: flex;
+                gap: 10px;
+            }
+
+            .chatbot-input-row input {
+                margin-bottom: 0;
+                border-radius: 14px;
+            }
+
+            .chatbot-send {
+                min-width: 52px;
+                border-radius: 14px;
+                border: none;
+                background: linear-gradient(135deg, var(--primary), var(--accent));
+                color: white;
+                cursor: pointer;
+                font-weight: 800;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: transform 0.2s ease;
+            }
+
+            .chatbot-send:hover {
+                transform: translateY(-2px);
+            }
+
+            .chatbot-send .svg-icon {
+                width: 20px;
+                height: 20px;
+            }
+
+            .typing {
+                opacity: 0.75;
+                font-style: italic;
+            }
+
+            @media (max-width: 980px) {
+                .grid {
                     grid-template-columns: 1fr 1fr;
-                }}
+                }
 
-                .stats {{
+                .stats {
                     grid-template-columns: 1fr 1fr;
-                }}
-            }}
+                }
+            }
 
-            @media (max-width: 760px) {{
-                .nav {{
+            @media (max-width: 760px) {
+                .nav {
                     flex-direction: column;
                     align-items: flex-start;
-                }}
+                }
 
                 .grid,
                 .grid-2,
                 .field-row,
-                .stats {{
+                .stats {
                     grid-template-columns: 1fr;
-                }}
+                }
 
-                .hero {{
+                .hero {
                     padding: 38px 24px;
-                }}
+                }
 
-                .hero h1 {{
+                .hero h1 {
                     font-size: 34px;
-                }}
+                }
 
-                .container {{
+                .container {
                     padding: 22px 16px 40px;
-                }}
+                }
 
-                .nav-links {{
+                .nav-links {
                     width: 100%;
-                }}
-            }}
+                }
+
+                .chatbot-panel {
+                    right: 16px;
+                    bottom: 92px;
+                    height: 500px;
+                }
+
+                .chatbot-launcher {
+                    right: 16px;
+                    bottom: 18px;
+                }
+            }
         </style>
     </head>
 
@@ -633,7 +877,7 @@ def page_layout(title: str, body: str):
         <div class="nav-wrap">
             <div class="nav">
                 <a class="brand" href="/web">
-                    <span class="brand-badge">{icon("leaf")}</span>
+                    <span class="brand-badge">__ICON_LEAF__</span>
                     <span>Agri Broker</span>
                 </a>
 
@@ -648,27 +892,134 @@ def page_layout(title: str, body: str):
         </div>
 
         <div class="container">
-            {body}
+            __BODY__
         </div>
+
+        <div class="chatbot-panel" id="chatbotPanel">
+            <div class="chatbot-header">
+                <div class="chatbot-title">
+                    __ICON_BRAIN__
+                    <span>Agri Broker AI</span>
+                </div>
+                <button class="chatbot-close" onclick="toggleChatbot()">×</button>
+            </div>
+
+            <div class="chatbot-messages" id="chatMessages">
+                <div class="chat-message bot">
+                    Hi, I am the Agri Broker AI assistant. Ask me how the platform works, how to buy, sell, or register as a transporter.
+                </div>
+            </div>
+
+            <div class="chatbot-suggestions">
+                <button class="chatbot-suggestion" onclick="sendSuggestion('How does Agri Broker work?')">How it works</button>
+                <button class="chatbot-suggestion" onclick="sendSuggestion('How do I sell produce?')">Selling</button>
+                <button class="chatbot-suggestion" onclick="sendSuggestion('How do transporters get jobs?')">Transporters</button>
+            </div>
+
+            <div class="chatbot-input-row">
+                <input id="chatInput" placeholder="Ask about Agri Broker..." onkeydown="handleChatKey(event)" />
+                <button class="chatbot-send" onclick="sendChatMessage()">__ICON_SEND__</button>
+            </div>
+        </div>
+
+        <button class="chatbot-launcher" onclick="toggleChatbot()" aria-label="Open AI assistant">
+            __ICON_BRAIN__
+        </button>
 
         <div class="footer">
             Agri Broker • AI-powered agricultural marketplace • Built with FastAPI + Supabase
         </div>
 
         <script>
-            const observer = new IntersectionObserver((entries) => {{
-                entries.forEach(entry => {{
-                    if (entry.isIntersecting) {{
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
                         entry.target.classList.add('visible');
-                    }}
-                }});
-            }}, {{ threshold: 0.08 }});
+                    }
+                });
+            }, { threshold: 0.08 });
 
             document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+            function toggleChatbot() {
+                const panel = document.getElementById('chatbotPanel');
+                panel.classList.toggle('open');
+            }
+
+            function appendMessage(type, text, extraClass = '') {
+                const messages = document.getElementById('chatMessages');
+                const div = document.createElement('div');
+                div.className = `chat-message ${type} ${extraClass}`;
+                div.textContent = text;
+                messages.appendChild(div);
+                messages.scrollTop = messages.scrollHeight;
+                return div;
+            }
+
+            function handleChatKey(event) {
+                if (event.key === 'Enter') {
+                    sendChatMessage();
+                }
+            }
+
+            function sendSuggestion(text) {
+                const input = document.getElementById('chatInput');
+                input.value = text;
+                sendChatMessage();
+            }
+
+            async function sendChatMessage() {
+                const input = document.getElementById('chatInput');
+                const message = input.value.trim();
+
+                if (!message) {
+                    return;
+                }
+
+                appendMessage('user', message);
+                input.value = '';
+
+                const typing = appendMessage('bot', 'Thinking...', 'typing');
+
+                try {
+                    const response = await fetch('/web/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: message
+                        })
+                    });
+
+                    const data = await response.json();
+                    typing.remove();
+
+                    appendMessage(
+                        'bot',
+                        data.reply || 'I could not generate a reply. Please try again.'
+                    );
+                } catch (error) {
+                    typing.remove();
+                    appendMessage(
+                        'bot',
+                        'Sorry, the AI assistant is temporarily unavailable. Please try again.'
+                    );
+                }
+            }
         </script>
     </body>
     </html>
     """
+
+    return (
+        template
+        .replace("__TITLE__", escape(title))
+        .replace("__BODY__", body)
+        .replace("__ICON_LEAF__", icon("leaf"))
+        .replace("__ICON_BRAIN__", icon("brain"))
+        .replace("__ICON_SEND__", icon("send"))
+    )
 
 
 @router.get("/")
@@ -692,7 +1043,7 @@ def web_home():
     <section class="stats reveal">
         <div class="stat">
             <div class="num">AI</div>
-            <div class="label">Smart extraction & matching logic</div>
+            <div class="label">Smart extraction and matching logic</div>
         </div>
         <div class="stat">
             <div class="num">24/7</div>
@@ -1259,7 +1610,7 @@ def portfolio_page():
             <span class="badge">{icon("brain")} AI extraction</span>
             <span class="badge">{icon("target")} Smart matching</span>
             <span class="badge">{icon("truck")} Transport pooling</span>
-            <span class="badge">{icon("shield")} Trust & reporting</span>
+            <span class="badge">{icon("shield")} Trust and reporting</span>
             <span class="badge">{icon("chart")} Admin dashboard</span>
             <span class="badge">{icon("globe")} Responsive web app</span>
             <span class="badge">{icon("bolt")} Render deployment</span>
