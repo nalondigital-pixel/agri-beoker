@@ -24,6 +24,7 @@ def portfolio_page():
                 --soft: #f7f7f8;
                 --blue: #2563eb;
                 --blue-dark: #1d4ed8;
+                --green: #16a34a;
                 --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
                 --radius: 26px;
             }
@@ -248,7 +249,6 @@ def portfolio_page():
 
             .profile-side {
                 display: flex;
-                flex-direction: column;
                 align-items: center;
                 justify-content: center;
             }
@@ -272,27 +272,6 @@ def portfolio_page():
                 transform: scale(1.13);
                 transform-origin: top center;
                 display: block;
-            }
-
-            .available {
-                margin-top: 16px;
-                background: var(--card);
-                border: 1px solid var(--line);
-                box-shadow: var(--shadow);
-                padding: 12px 22px;
-                border-radius: 999px;
-                color: var(--muted);
-                font-size: 14px;
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-            }
-
-            .dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                background: #22c55e;
             }
 
             .socials {
@@ -471,6 +450,11 @@ def portfolio_page():
                 border: 1px solid var(--line);
             }
 
+            .project-links a.green {
+                background: var(--green);
+                color: white;
+            }
+
             .project-links a:hover {
                 transform: translateY(-3px);
             }
@@ -610,7 +594,7 @@ def portfolio_page():
                 }
 
                 .profile-side {
-                    align-items: flex-start;
+                    justify-content: flex-start;
                 }
             }
 
@@ -622,6 +606,7 @@ def portfolio_page():
 
                 .nav-links {
                     gap: 18px;
+                    flex-wrap: wrap;
                 }
 
                 .nav-actions {
@@ -700,11 +685,6 @@ def portfolio_page():
                     <div class="profile-card">
                         <img src="/static/profile.jpg" alt="Darlington Mponda profile photo" />
                     </div>
-
-                    <div class="available">
-                        <span class="dot"></span>
-                        Available for projects
-                    </div>
                 </div>
             </section>
 
@@ -751,6 +731,7 @@ def portfolio_page():
                             <span class="pill">Linux / Nginx</span>
                             <span class="pill">Git & GitHub</span>
                             <span class="pill">Render</span>
+                            <span class="pill">Vercel</span>
                             <span class="pill">WordPress</span>
                             <span class="pill">Bandit</span>
                             <span class="pill">pip-audit</span>
@@ -769,8 +750,8 @@ def portfolio_page():
                         </div>
 
                         <p>
-                            A mix of full-stack web apps, AI systems, dashboards, and security-focused
-                            project work.
+                            A mix of full-stack web apps, AI systems, dashboards, booking systems,
+                            and security-focused project work.
                         </p>
                     </div>
 
@@ -786,6 +767,7 @@ def portfolio_page():
                                 <span class="tag">FastAPI</span>
                                 <span class="tag">Supabase</span>
                                 <span class="tag">Gemini AI</span>
+                                <span class="tag">Render</span>
                                 <span class="tag">Security</span>
                             </div>
 
@@ -804,48 +786,56 @@ def portfolio_page():
                         <article class="project-card">
                             <h3>Attendance Management System</h3>
                             <p>
-                                Employee and attendance management system for tracking staff,
-                                attendance records, and admin operations.
+                                A full-stack employee attendance and staff management system built for
+                                tracking employees, daily attendance, clock-in and clock-out records,
+                                and admin operations.
                             </p>
 
                             <div class="tag-row">
                                 <span class="tag">Python</span>
                                 <span class="tag">Django</span>
-                                <span class="tag">Admin</span>
-                                <span class="tag">Database</span>
+                                <span class="tag">SQLite</span>
+                                <span class="tag">Admin Dashboard</span>
+                                <span class="tag">CRUD</span>
+                                <span class="tag">Web App</span>
                             </div>
 
                             <p>
-                                Built with staff records, attendance tracking, clock-in and clock-out
-                                workflows, and management functionality.
+                                Includes employee records, department and position tracking,
+                                attendance logs, salary information, status management, and admin
+                                actions for marking clock-in and clock-out times.
                             </p>
 
                             <div class="project-links">
-                                <a class="secondary" href="#">Coming Soon</a>
+                                <a href="#contact">Request Demo</a>
+                                <a class="secondary" href="#" target="_blank">GitHub Coming Soon</a>
                             </div>
                         </article>
 
                         <article class="project-card">
-                            <h3>Appointment Booking Website</h3>
+                            <h3>Hydro Booking App</h3>
                             <p>
-                                Booking website for service-based businesses to receive appointment
-                                and reservation requests online.
+                                A modern appointment booking website built for service-based businesses
+                                to receive booking requests and manage customer interest online.
                             </p>
 
                             <div class="tag-row">
-                                <span class="tag">Web App</span>
-                                <span class="tag">Forms</span>
+                                <span class="tag">React</span>
+                                <span class="tag">JavaScript</span>
                                 <span class="tag">Responsive UI</span>
-                                <span class="tag">Deployment</span>
+                                <span class="tag">Vercel</span>
+                                <span class="tag">Booking System</span>
                             </div>
 
                             <p>
-                                Designed as a clean client-facing booking flow with simple user
-                                interaction and business-ready presentation.
+                                Provides a clean customer-facing booking flow, responsive design,
+                                service presentation, and a professional online presence for
+                                appointment-based work.
                             </p>
 
                             <div class="project-links">
-                                <a class="secondary" href="#">Coming Soon</a>
+                                <a href="https://hydrofrontend.vercel.app/" target="_blank">Live Demo</a>
+                                <a class="secondary" href="#" target="_blank">GitHub Coming Soon</a>
                             </div>
                         </article>
                     </div>
@@ -855,8 +845,8 @@ def portfolio_page():
             <section class="container" id="contact">
                 <h2 class="section-title">Let's build<br>something together</h2>
                 <p class="hero-copy">
-                    Whether it's a website, an AI system, a dashboard, automation, or a security review,
-                    my inbox is open.
+                    Whether it's a website, an AI system, a dashboard, automation, booking system,
+                    attendance system, or a security review, my inbox is open.
                 </p>
 
                 <div class="contact">
@@ -902,7 +892,7 @@ def portfolio_page():
                         </div>
 
                         <label>Message</label>
-                        <textarea name="message" placeholder="Tell me about your project..." required></textarea>
+                        <textarea name="message" placeholder="Tell me about your project or request a demo..." required></textarea>
 
                         <button class="submit" type="submit">Send it</button>
                     </form>
