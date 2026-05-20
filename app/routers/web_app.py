@@ -1,6 +1,8 @@
+import re
 from html import escape
 
-from fastapi import APIRouter, Form
+from fastapi import APIRouter, Form, Request
+from app.core.rate_limit import limiter
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -16,6 +18,122 @@ router = APIRouter(prefix="/web", tags=["Public Web App"])
 
 class WebChatRequest(BaseModel):
     message: str
+
+
+ALLOWED_UNITS = ["kg", "bags", "boxes", "crates", ""]
+ALLOWED_CURRENCIES = ["USD", "ZIG", "ZAR"]
+ALLOWED_SELL_DELIVERY_OPTIONS = ["unknown", "can_deliver", "buyer_collects", "needs_transport"]
+ALLOWED_BUY_DELIVERY_OPTIONS = ["unknown", "will_collect", "needs_transport"]
+ALLOWED_CAPACITY_UNITS = ["kg", "tonnes", "boxes", "bags"]
+
+
+def clean_text(value: str, field_name: str, max_length: int, required: bool = True):
+    value = str(value or "").strip()
+
+    if required and not value:
+        raise ValueError(f"{field_name} is required.")
+
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} is too long. Maximum allowed is {max_length} characters.")
+
+    blocked_patterns = [
+        "<script",
+        "</script",
+        "javascript:",
+        "onerror=",
+        "onload=",
+    ]
+
+    lower_value = value.lower()
+
+    for pattern in blocked_patterns:
+        if pattern in lower_value:
+            raise ValueError(f"{field_name} contains unsafe content.")
+
+    return value
+
+
+def clean_phone(phone: str):
+    phone = str(phone or "").strip()
+    phone = phone.replace(" ", "").replace("-", "").replace("+", "")
+
+    if not phone:
+        raise ValueError("Phone number is required.")
+
+    if not phone.isdigit():
+        raise ValueError("Phone number must contain digits only.")
+
+    if len(phone) < 9 or len(phone) > 15:
+        raise ValueError("Phone number length is invalid.")
+
+    return phone
+
+
+def validate_positive_number(value, field_name: str, max_value: float = 100000000):
+    try:
+        number = float(value)
+    except Exception:
+        raise ValueError(f"{field_name} must be a valid number.")
+
+    if number <= 0:
+        raise ValueError(f"{field_name} must be greater than zero.")
+
+    if number > max_value:
+        raise ValueError(f"{field_name} is unrealistically large.")
+
+    return number
+
+
+def validate_optional_price(value):
+    value = str(value or "").strip()
+
+    if not value:
+        return None
+
+    try:
+        price = float(value)
+    except Exception:
+        raise ValueError("Price must be a valid number.")
+
+    if price < 0:
+        raise ValueError("Price cannot be negative.")
+
+    if price > 100000000:
+        raise ValueError("Price is unrealistically large.")
+
+    return price
+
+
+def validate_choice(value: str, allowed_values: list, field_name: str):
+    value = str(value or "").strip()
+
+    if value not in allowed_values:
+        raise ValueError(f"{field_name} has an invalid value.")
+
+    return value
+
+
+def validation_error(message: str):
+    body = f"""
+    <section class="success" style="border-color: rgba(248,113,113,0.45); background: rgba(127,29,29,0.22); color: #fecaca;">
+        <h2>Invalid submission</h2>
+        <p>{escape(message)}</p>
+    </section>
+
+    <section class="card">
+        <h3>What to do</h3>
+        <p class="muted">
+            Please go back and check your form details. Make sure numbers are positive,
+            phone numbers contain digits only, and text fields are not too long.
+        </p>
+
+        <div class="actions">
+            <a class="button" href="/web">Back Home</a>
+        </div>
+    </section>
+    """
+
+    return HTMLResponse(page_layout("Invalid Submission", body), status_code=400)
 
 
 def icon(name: str):
@@ -102,7 +220,8 @@ def icon(name: str):
 
 
 @router.post("/chat")
-def web_chat(request: WebChatRequest):
+@limiter.limit("10/minute")
+def web_chat(http_request: Request, request: WebChatRequest):
     user_message = (request.message or "").strip()
 
     if not user_message:
@@ -1175,19 +1294,26 @@ def submit_sell(
     delivery_option: str = Form("unknown"),
     notes: str = Form(""),
 ):
+    
+    try:
+        name = clean_text(name, "Name", 80)
+        phone = clean_phone(phone)
+        commodity = clean_text(commodity, "Commodity", 80)
+        location = clean_text(location, "Location", 120)
+        notes = clean_text(notes, "Notes", 500, required=False)
+        quantity = validate_positive_number(quantity, "Quantity")
+        unit = validate_choice(unit, ALLOWED_UNITS, "Unit")
+        currency = validate_choice(currency, ALLOWED_CURRENCIES, "Currency")
+        delivery_option = validate_choice(delivery_option, ALLOWED_SELL_DELIVERY_OPTIONS, "Transport option")
+        price_value = validate_optional_price(price)
+    except ValueError as e:
+        return validation_error(str(e))    
     normalized_location = normalize_location_name(location)
 
-    price_value = None
     price_per_unit = None
 
-    try:
-        if price:
-            price_value = float(price)
-            if quantity and quantity > 0:
-                price_per_unit = price_value / quantity
-    except Exception:
-        price_value = None
-        price_per_unit = None
+    if price_value is not None and quantity > 0:
+        price_per_unit = price_value / quantity
 
     save_listing({
         "type": "listing",
@@ -1339,20 +1465,25 @@ def submit_buy(
     delivery_option: str = Form("unknown"),
     notes: str = Form(""),
 ):
+    try:
+        name = clean_text(name, "Name", 80)
+        phone = clean_phone(phone)
+        commodity = clean_text(commodity, "Commodity", 80)
+        location = clean_text(location, "Location", 120)
+        notes = clean_text(notes, "Notes", 500, required=False)
+        quantity = validate_positive_number(quantity, "Quantity")
+        unit = validate_choice(unit, ALLOWED_UNITS, "Unit")
+        currency = validate_choice(currency, ALLOWED_CURRENCIES, "Currency")
+        delivery_option = validate_choice(delivery_option, ALLOWED_BUY_DELIVERY_OPTIONS, "Transport option")
+        price_value = validate_optional_price(price)
+    except ValueError as e:
+        return validation_error(str(e))    
     normalized_location = normalize_location_name(location)
 
-    price_value = None
     price_per_unit = None
 
-    try:
-        if price:
-            price_value = float(price)
-            if quantity and quantity > 0:
-                price_per_unit = price_value / quantity
-    except Exception:
-        price_value = None
-        price_per_unit = None
-
+    if price_value is not None and quantity > 0:
+        price_per_unit = price_value / quantity
     save_listing({
         "type": "listing",
         "intent": "buy",
@@ -1474,6 +1605,15 @@ def submit_transporter(
     vehicle_capacity: float = Form(...),
     capacity_unit: str = Form("kg"),
 ):
+    try:
+        name = clean_text(name, "Name / Company", 100)
+        phone = clean_phone(phone)
+        base_location = clean_text(base_location, "Base location", 120)
+        vehicle_type = clean_text(vehicle_type, "Vehicle type", 100)
+        vehicle_capacity = validate_positive_number(vehicle_capacity, "Vehicle capacity")
+        capacity_unit = validate_choice(capacity_unit, ALLOWED_CAPACITY_UNITS, "Capacity unit")
+    except ValueError as e:
+        return validation_error(str(e))    
     normalized_location = normalize_location_name(base_location)
 
     register_or_update_transporter(
